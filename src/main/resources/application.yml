@@ -27,6 +27,12 @@ app:
     secret: mentalmadad-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256
     expiration-ms: 3600000       # 1 hour
     refresh-expiration-ms: 604800000  # 7 days
+  # AI assistant provider selection.
+  # local = self-contained rule/keyword engine (no external API key, zero budget).
+  # A real LLM provider can be plugged in later by implementing the AiProvider
+  # interface and setting app.ai.provider=<name> — controllers/services don't change.
+  ai:
+    provider: local
 
 # Swagger / OpenAPI
 springdoc:
