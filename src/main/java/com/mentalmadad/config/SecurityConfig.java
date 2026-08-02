@@ -91,6 +91,8 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // AI assistant endpoints require authentication (JWT) like other protected routes
+                .requestMatchers("/api/ai/**").authenticated()
                 // Everything else requires authentication
                 .anyRequest().authenticated()
             )
