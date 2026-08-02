@@ -109,6 +109,79 @@ mvn spring-boot:run --spring.profiles.active=prod
 mvn clean package -Dspring.profiles.active=prod
 ```
 
+## Deployment (AWS App Runner + managed PostgreSQL)
+
+The repo ships a multi-stage `Dockerfile` (Maven build → lean JRE runtime,
+non-root user) and an `apprunner.yaml` that declares the intended App Runner
+service configuration.
+
+### 1. Build the image
+
+```bash
+docker build -t mentalmadad-backend:0.1.0 .
+```
+
+The image listens on `$PORT` (default `8080` — `server.port: ${PORT:8080}` in
+`application.yml`), so the platform can inject the port it routes to.
+
+### 2. Push to Amazon ECR
+
+```bash
+aws ecr get-login-password --region <region> | docker login --username AWS \
+  --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com
+docker tag mentalmadad-backend:0.1.0 \
+  <account-id>.dkr.ecr.<region>.amazonaws.com/mentalmadad-backend:0.1.0
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/mentalmadad-backend:0.1.0
+```
+
+### 3. Create the App Runner service
+
+Create a service from the ECR image (console: **Create service → Container
+registry → Amazon ECR**; or `aws apprunner create-service` with an
+`ImageRepository` source). Apply the settings below.
+
+> Note: App Runner reads `apprunner.yaml` only for source-code-based
+> services. For an ECR-image service the file is ignored, so the same values
+> must be entered when creating/updating the service — treat `apprunner.yaml`
+> as the declarative reference and keep it in sync.
+
+- **Port:** `8080`
+- **Health check:** `TCP` on port `8080`, interval 5s, timeout 2s, healthy
+  threshold 1, unhealthy threshold 5. (Spring Boot Actuator is not on the
+  classpath, so there is no `/actuator/health` HTTP endpoint — a TCP
+  connection check is the right probe.)
+- **Environment variables:**
+
+  | Variable | Value | Notes |
+  |----------|-------|-------|
+  | `SPRING_PROFILES_ACTIVE` | `prod` | Activates the PostgreSQL profile |
+  | `DATABASE_URL` | *your JDBC URL* | Must be a `jdbc:postgresql://...` URL (see below) |
+  | `APP_JWT_SECRET` | *random value* | Strong random secret, e.g. `openssl rand -base64 48` |
+  | `PORT` | *(auto)* | **Reserved by App Runner** — do not set it; App Runner injects it with the service port. The app binds to it via `${PORT:8080}`. |
+
+  **`DATABASE_URL` format:** the prod profile expects a JDBC URL, e.g.
+  `jdbc:postgresql://HOST:5432/mentalmadad?sslmode=require`. If your managed
+  PostgreSQL provider gives a `postgres://...` URL, convert it to
+  `jdbc:postgresql://...`. Alternatively, omit `DATABASE_URL` and set the
+  `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` fallbacks the
+  profile already supports (see `application-prod.yml`). Prefer storing
+  `DATABASE_URL` / `APP_JWT_SECRET` / `DB_PASSWORD` in AWS Secrets Manager
+  and referencing them (App Runner supports `secrets` in `apprunner.yaml`).
+
+  **`APP_JWT_SECRET`:** must be a strong random value (≥ 256 bits for HS256)
+  — never reuse the dev default from `application.yml`. Generate with
+  `openssl rand -base64 48`. Rotating it invalidates all issued tokens.
+
+### 4. Deploy
+
+- Manual: **Deploy → Deploy from image** in the App Runner console.
+- Automatic: enable **auto-deploy on image push** at service creation so
+  every `docker push` to the ECR repo triggers a deployment.
+
+The container runs as the non-root `appuser` (uid 1000). Instance size:
+start with 0.25 vCPU / 512 MB (the JVM sizes its heap from the container
+memory limit via `-XX:MaxRAMPercentage=75.0`).
+
 ## Swagger UI
 
 Once running, open: **http://localhost:8080/swagger-ui.html**

@@ -1,0 +1,76 @@
+# ============================================================
+# AWS App Runner service configuration — MentalMadad Backend
+#
+# This file declares the service configuration for App Runner
+# (runtime: as-config = "read everything from this file").
+#
+# IMPORTANT (verified against AWS docs, 2026-08):
+#   * App Runner consumes apprunner.yaml ONLY for source-code-based
+#     services (connected GitHub/Bitbucket repo). Image-based services
+#     (ECR image) IGNORE this file — the same settings below must be
+#     entered at service creation time (console or `aws apprunner
+#     create-service`). Keep this file in sync with the ECR flow.
+#   * The configuration file does NOT support health checks — they are
+#     set on the service (console/API), not in this file. The TCP health
+#     check settings are documented in the comments below.
+#   * PORT is a RESERVED environment variable in App Runner: you cannot
+#     assign it yourself, and App Runner injects it automatically with
+#     the service port value. The app listens on ${PORT:8080} (see
+#     src/main/resources/application.yml).
+# ============================================================
+
+version: 1.0
+runtime: as-config
+
+# Build from the Dockerfile in the repo root (multi-stage: Maven build
+# -> lean JRE runtime image).
+build:
+  docker: {}
+
+run:
+  # The app binds to $PORT (default 8080). App Runner injects PORT with
+  # this value and routes traffic to it.
+  network:
+    port: 8080
+
+  # Runtime environment variables (set values at deploy time — never
+  # commit real secrets). DATABASE_URL and APP_JWT_SECRET are REQUIRED
+  # in production; leave them empty here and fill them when creating or
+  # updating the service.
+  env:
+    - name: SPRING_PROFILES_ACTIVE
+      value: prod
+    - name: DATABASE_URL
+      value: ""        # e.g. jdbc:postgresql://HOST:5432/dbname — or use the DB_* fallbacks below
+    - name: APP_JWT_SECRET
+      value: ""        # strong random value, e.g. $(openssl rand -base64 48)
+
+    # Optional: when using the DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD
+    # fallback instead of DATABASE_URL (see application-prod.yml):
+    # - name: DB_HOST
+    #   value: ""
+    # - name: DB_PORT
+    #   value: ""
+    # - name: DB_NAME
+    #   value: ""
+    # - name: DB_USER
+    #   value: ""
+    # - name: DB_PASSWORD
+    #   value: ""        # sensitive — prefer a Secrets Manager reference
+
+    # PORT: do NOT add here — reserved by App Runner (auto-injected).
+    # The app reads it via ${PORT:8080}.
+
+# Health check — configured on the App Runner service (console/API),
+# not in this file. Recommended settings for this app:
+#
+#   Protocol:             TCP
+#   Port:                 8080
+#   Interval:             5 seconds
+#   Timeout:              2 seconds
+#   Healthy threshold:    1
+#   Unhealthy threshold:  5
+#
+# (Spring Boot Actuator is NOT on the classpath, so there is no
+#  /actuator/health HTTP endpoint — a TCP connection check on the app
+#  port is the correct health probe.)
