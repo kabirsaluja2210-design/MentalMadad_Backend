@@ -1,6 +1,9 @@
 package com.mentalmadad.repository;
 
 import com.mentalmadad.entity.User;
+import com.mentalmadad.entity.enums.Role;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -27,4 +30,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * Check if an email already exists — used during registration validation.
      */
     boolean existsByEmail(String email);
+
+    /**
+     * Paginated users filtered by role — used by the admin dashboard's
+     * role filter (page/size come from the Pageable).
+     */
+    Page<User> findByRole(Role role, Pageable pageable);
 }
