@@ -13,7 +13,9 @@
 # ------------------------- Common config (all profiles) -------------------------
 
 server:
-  port: 8080
+  # Port is driven by the PORT environment variable (default 8080) so the
+  # container can listen on the port App Runner / the platform injects.
+  port: ${PORT:8080}
 
 spring:
   application:
