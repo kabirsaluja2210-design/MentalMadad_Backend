@@ -1,0 +1,75 @@
+# ============================================================
+# MentalMadad Backend — Production Profile (PostgreSQL)
+#
+# Activate with:  --spring.profiles.active=prod
+# (or SPRING_PROFILES_ACTIVE=prod environment variable)
+#
+# Configuration is driven entirely by environment variables so no
+# credentials or connection details are committed to the repository.
+#
+# Connection — two supported modes:
+#   1. Full JDBC URL (e.g. managed providers such as Neon):
+#        DATABASE_URL=jdbc:postgresql://HOST:5432/dbname
+#   2. Individual parts (falls back to these when DATABASE_URL is unset):
+#        DB_HOST (default: localhost), DB_PORT (default: 5432),
+#        DB_NAME (default: mentalmadad), DB_USER (default: postgres),
+#        DB_PASSWORD (default: postgres)
+#
+# Note: if DATABASE_URL is a `postgres://...` style URL, convert it to
+# `jdbc:postgresql://...` or set the individual DB_* variables instead.
+# ============================================================
+
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:mentalmadad}}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+    # HikariCP connection pool (Spring Boot's default pool)
+    hikari:
+      pool-name: MentalMadadHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000      # 30s to get a connection from the pool
+      idle-timeout: 600000           # 10 minutes idle before eviction
+      max-lifetime: 1800000          # 30 minutes max connection lifetime
+      connection-test-query: SELECT 1
+
+  # JPA / Hibernate
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      # Safer for production: never auto-create/alter the schema.
+      # schema-postgresql.sql is applied first (see spring.sql.init below),
+      # then Hibernate validates the entities against the existing schema.
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+
+  # Schema + seed data for PostgreSQL.
+  # By default (defer-datasource-initialization=false) these scripts run
+  # BEFORE Hibernate initializes — so the tables exist by the time
+  # `ddl-auto: validate` checks the entities. Both scripts are idempotent:
+  #   * schema uses CREATE TABLE IF NOT EXISTS
+  #   * data uses ON CONFLICT (email) DO NOTHING
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-postgresql.sql
+      data-locations: classpath:data-postgresql.sql
+
+  # H2 console must never be exposed in production
+  h2:
+    console:
+      enabled: false
+
+# JWT secret can be overridden per environment (do not reuse the dev secret
+# in real deployments). Falls back to the dev default when unset.
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:mentalmadad-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256}

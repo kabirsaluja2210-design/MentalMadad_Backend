@@ -1,0 +1,1 @@
+package com.mentalmadad.dto.response; import com.mentalmadad.entity.enums.*; import lombok.*; import java.time.*; @Data @Builder @NoArgsConstructor @AllArgsConstructor public class AppointmentResponse { Long id,doctorId,patientId; String doctorName,patientName; LocalDate appointmentDate; LocalTime startTime,endTime; AppointmentType type; AppointmentStatus status; String notes; }

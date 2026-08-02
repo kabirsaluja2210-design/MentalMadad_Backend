@@ -1,0 +1,1 @@
+package com.mentalmadad.dto.response; import lombok.*; import java.math.BigDecimal; @Data @Builder @NoArgsConstructor @AllArgsConstructor public class DoctorResponse { Long id; String name; String specialization; String licenseNumber; int yearsOfExperience; BigDecimal consultationFee; double rating; int reviewCount; boolean availableForChat,availableForVideo,availableInPerson; }

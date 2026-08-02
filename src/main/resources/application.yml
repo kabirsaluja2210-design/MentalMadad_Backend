@@ -1,0 +1,83 @@
+# ============================================================
+# MentalMadad Backend — Application Configuration
+#
+# Profile model (Spring Boot profiles):
+#   * default profile (active when no profile is specified):
+#       H2 in-memory database for local development.
+#   * prod profile (activate with --spring.profiles.active=prod):
+#       PostgreSQL for production. Full configuration lives in
+#       application-prod.yml (loaded automatically when the
+#       "prod" profile is active).
+# ============================================================
+
+# ------------------------- Common config (all profiles) -------------------------
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: mentalmadad-backend
+
+# JWT Configuration
+app:
+  jwt:
+    secret: mentalmadad-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256
+    expiration-ms: 3600000       # 1 hour
+    refresh-expiration-ms: 604800000  # 7 days
+
+# Swagger / OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+
+# Logging
+logging:
+  level:
+    com.mentalmadad: DEBUG
+    org.springframework.security: INFO
+
+---
+# ------------------------- default profile (dev: H2 in-memory) -------------------------
+
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  # H2 in-memory database for development
+  datasource:
+    url: jdbc:h2:mem:mentalmadad;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # H2 Console (accessible at /h2-console)
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # JPA / Hibernate
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      # Hibernate creates/drops the schema on every dev restart
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    # Run data.sql AFTER Hibernate has created the tables (create-drop).
+    # (Spring Boot runs SQL init scripts after JPA init when this is true.)
+    defer-datasource-initialization: true
+
+  # Seed data (always run so the dev DB has test users on every boot)
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
