@@ -4,6 +4,7 @@ import com.mentalmadad.dto.response.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -26,9 +27,6 @@ import java.util.Map;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
-    /**
-     * Handle ResourceNotFoundException -> 404 Not Found.
-     */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFound(
             ResourceNotFoundException ex, HttpServletRequest request) {
@@ -41,9 +39,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 
-    /**
-     * Handle BadRequestException -> 400 Bad Request.
-     */
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<ErrorResponse> handleBadRequest(
             BadRequestException ex, HttpServletRequest request) {
@@ -56,9 +51,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
-    /**
-     * Handle BadCredentialsException (Spring Security) -> 401 Unauthorized.
-     */
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex, HttpServletRequest request) {
@@ -72,9 +64,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handle validation errors from @Valid annotations -> 400.
-     * Collects all field-level errors into the errors map.
+     * Handle AccessDeniedException (Spring Security @PreAuthorize) -> 403 Forbidden.
+     * Without this handler the catch-all below would convert role-guard
+     * violations into misleading 500 responses.
      */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException ex, HttpServletRequest request) {
+        ErrorResponse error = ErrorResponse.builder()
+                .status(HttpStatus.FORBIDDEN.value())
+                .error("Forbidden")
+                .message("You do not have permission to perform this action")
+                .path(request.getRequestURI())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationErrors(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
@@ -92,9 +97,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
-    /**
-     * Catch-all for any unhandled exceptions -> 500 Internal Server Error.
-     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex, HttpServletRequest request) {
