@@ -87,7 +87,18 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints
                 .requestMatchers("/api/auth/**").permitAll()
+                // Doctor self-service MUST precede the public /api/doctors/**
+                // matcher below — Spring Security applies the first matching
+                // rule, so /api/doctors/me requires authentication while the
+                // public directory stays open. Provider roles are enforced by
+                // method-level @PreAuthorize (403 on wrong role).
+                .requestMatchers("/api/doctors/me").authenticated()
                 .requestMatchers("/api/doctors/**").permitAll()
+                // Admin endpoints — authentication at the chain level; the
+                // ADMIN/SUPER_ADMIN role rule is enforced by method-level
+                // @PreAuthorize (matches how /api/appointments/doctor/** is
+                // protected: chain requires auth, methods enforce roles).
+                .requestMatchers("/api/admin/**").authenticated()
                 .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()

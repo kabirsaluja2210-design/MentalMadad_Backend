@@ -3,6 +3,7 @@ package com.mentalmadad.repository;
 import com.mentalmadad.entity.Appointment;
 import com.mentalmadad.entity.enums.AppointmentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -30,4 +31,11 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     List<Appointment> findByDoctorIdAndStatusOrderByAppointmentDateAscStartTimeAsc(
             Long doctorId, AppointmentStatus status);
+
+    /**
+     * Appointment counts grouped by status (Object[] = {AppointmentStatus, Long})
+     * — feeds the admin dashboard's appointments-by-status breakdown.
+     */
+    @Query("select a.status, count(a) from Appointment a group by a.status")
+    List<Object[]> countByStatusGrouped();
 }
