@@ -14,3 +14,8 @@ prisma/dev.db-journal
 public/renders/*
 !public/renders/.gitkeep
 storage/
+
+# One-off driver scripts used to exercise the pipeline by hand. These are
+# throwaways that keep appearing at the app root and are not part of the app.
+/*.local.ts
+scratch/
