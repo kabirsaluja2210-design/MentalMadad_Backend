@@ -214,7 +214,10 @@ export const geminiLlm = makeHostedLlm({
   name: 'Google Gemini',
   apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
   endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-  model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  // An alias rather than a pinned version: pinned defaults go stale and start
+  // returning 404 when Google retires a model, which is exactly what
+  // gemini-2.0-flash did. The alias tracks the current flash release.
+  model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
   headers: (key) => ({ 'content-type': 'application/json', 'x-goog-api-key': key }),
   body: (prompt) => ({
     contents: [{ parts: [{ text: prompt }] }],
