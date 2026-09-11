@@ -21,7 +21,7 @@ burn-in, AAC audio, `+faststart` MP4s.
 | 9 video formats, each with its own pacing/visuals/captions | Working |
 | Script generation, scene breakdown, word-level caption timing | Working (offline template engine) |
 | Voiceover track + word timings | **Placeholder** — correct-length silent WAV |
-| Per-scene visuals | **Placeholder** — procedurally generated PNGs |
+| Per-scene visuals — **generated motion clips** or stills | **Placeholder** — procedural, but real animated MP4s |
 | ffmpeg composition, camera motion, caption burn-in, watermark | Working (real) |
 | Quick editor + Advanced per-scene editor | Working |
 | Render queue, retries, progress, credit refund on failure | Working |
@@ -66,8 +66,28 @@ or set `FFMPEG_PATH`. Settings will tell you if it is missing.
 | **Text Message Story** | A story told as a chat thread between two speakers |
 | **Motivational** | Punchy declarative lines over bold typography |
 
+### Motion clips vs stills
+
+Each format declares whether its scenes default to a **generated motion clip** or
+a **still frame with a camera move**. Atmospheric formats (cinematic short,
+reddit story, AI short, timelapse, motivational) default to clips; card-like
+formats where the visual carries information (quiz, listicle, chat thread,
+long-form) default to stills, which are cheaper and read more clearly.
+
+Either default can be overridden per video — at creation or later from the
+editor — with `auto | video | image`.
+
+The built-in clip generator is genuinely animated, not a still with a pan: the
+painters are functions of position **and** time, so light drifts, rings expand
+and blobs travel. They are periodic in time, so a short clip loops seamlessly to
+fill a long scene instead of regenerating every second of it. Frames are
+generated below playback resolution and rate, then scaled and interpolated up by
+ffmpeg — abstract gradients upscale well, and generating 30fps of procedural
+pixels in JS would be far too slow.
+
 A format is a recipe, not a prompt: each one sets beat length, visual style,
-caption treatment, camera-move pool, music mood and its own options panel.
+visual output kind, caption treatment, camera-move pool, music mood and its own
+options panel.
 Adding a tenth means one entry in `src/pipeline/modes.ts` plus a beat planner —
 the API, both editors and the UI pick it up automatically.
 
@@ -83,12 +103,16 @@ script → voice → visuals → captions → compose → finish → thumbnail
    Beats become `Scene` rows.
 2. **voice** — each scene's text is synthesised; the provider returns audio plus
    **word-level timings**, which set the scene's true duration.
-3. **visuals** — one image per scene, seeded deterministically from the prompt so
-   an unchanged scene re-renders identically.
+3. **visuals** — one asset per scene, seeded deterministically from the prompt so
+   an unchanged scene re-renders identically. Depending on the format this is a
+   **generated motion clip** (a real moving MP4) or a still frame that the
+   compositor gives a camera move to.
 4. **captions** — word timings are offset onto the global timeline and written as
    an ASS subtitle file.
-5. **compose** — each scene becomes a clip with its camera move (`zoompan`), then
-   clips are joined with the concat demuxer using stream copy.
+5. **compose** — each scene becomes a clip. Stills are held for the scene and
+   given a camera move (`zoompan`); generated clips are looped to fill the scene
+   and keep their own motion instead. Clips are then joined with the concat
+   demuxer using stream copy.
 6. **finish** — captions burned via libass, watermark drawn, music bed mixed.
 7. **thumbnail** — poster frame extracted.
 
@@ -108,7 +132,9 @@ first provider that has credentials → the stub.
 ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY  — model-written scripts
 ELEVENLABS_API_KEY=...    # or OPENAI_API_KEY  — real voiceover
 IMAGE_PROVIDER=replicate
-REPLICATE_API_TOKEN=...   # or OPENAI_API_KEY  — generated visuals
+REPLICATE_API_TOKEN=...   # or OPENAI_API_KEY  — generated stills
+VIDEO_PROVIDER=replicate  # or luma            — generated motion clips
+LUMA_API_KEY=...
 ```
 
 Stages are independent — model-written scripts over placeholder visuals is a
@@ -116,7 +142,13 @@ normal, supported configuration. Hosted adapters fall back to the stub on any
 error rather than failing a render. **No code changes are needed anywhere.**
 
 Adapters are already written for Anthropic, OpenAI (chat/speech/images),
-ElevenLabs and Replicate.
+ElevenLabs, Replicate (images **and** video) and Luma.
+
+Video models are slow and expensive relative to the rest of the pipeline, so
+those adapters poll with a generous ceiling (`VIDEO_TIMEOUT_MS`, default 5min)
+and fall back to the procedural clip rather than killing a render. Model output
+is not loopable, so it is marked non-seamless and the compositor will not repeat
+it to fill a longer scene.
 
 ### Publishing
 
@@ -175,13 +207,16 @@ npm run build
 
 Covered: speech timing and caption grouping, ASS generation (including that
 caption text cannot inject override tags), the mode catalog and all nine beat
-planners, credit maths, schedule advancement, and the PNG/WAV encoders.
+planners, credit maths, schedule advancement, the PNG/WAV encoders, and the
+procedural painters — that every style animates across a full cycle, loops
+without a seam, stays in gamut and yields even dimensions for H.264.
 
 ---
 
 ## Known gaps
 
-- Voiceover audio is silent and visuals are procedural until keys are supplied.
+- Voiceover audio is silent, and visuals (clips and stills alike) are procedural
+  abstract motion until keys are supplied.
 - Platform uploads are not implemented (see **Publishing** above).
 - No payment processor — switching plans grants credits directly.
 - Music library is metadata-only; no audio ships with the repo. Drop files in

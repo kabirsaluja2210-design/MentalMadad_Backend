@@ -1,10 +1,14 @@
-import type { ImageProvider, LlmProvider, MusicProvider, ProviderInfo, TtsProvider } from './types';
+import type {
+  ImageProvider, LlmProvider, MusicProvider, ProviderInfo, TtsProvider, VideoProvider,
+} from './types';
 import { stubLlm } from './llm/stub';
 import { anthropicLlm, openaiLlm } from './llm/hosted';
 import { stubTts } from './tts/stub';
 import { elevenLabsTts, openaiTts } from './tts/hosted';
 import { stubImage } from './image/stub';
 import { openaiImage, replicateImage } from './image/hosted';
+import { stubVideo } from './video/stub';
+import { lumaVideo, replicateVideo } from './video/hosted';
 import { stubMusic } from './music/stub';
 import { SOCIAL_PLATFORMS, socialProviders } from './social';
 
@@ -44,6 +48,10 @@ export function getImage(): ImageProvider {
   return pick(process.env.IMAGE_PROVIDER, [openaiImage, replicateImage], stubImage);
 }
 
+export function getVideo(): VideoProvider {
+  return pick(process.env.VIDEO_PROVIDER, [replicateVideo, lumaVideo], stubVideo);
+}
+
 export function getMusic(): MusicProvider {
   return stubMusic;
 }
@@ -60,6 +68,7 @@ export function providerStatus(): ProviderStatus[] {
     { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, anthropicLlm.info, openaiLlm.info] },
     { kind: 'tts', active: getTts().info, alternatives: [stubTts.info, elevenLabsTts.info, openaiTts.info] },
     { kind: 'image', active: getImage().info, alternatives: [stubImage.info, openaiImage.info, replicateImage.info] },
+    { kind: 'video', active: getVideo().info, alternatives: [stubVideo.info, replicateVideo.info, lumaVideo.info] },
     { kind: 'music', active: getMusic().info, alternatives: [stubMusic.info] },
     {
       kind: 'social',

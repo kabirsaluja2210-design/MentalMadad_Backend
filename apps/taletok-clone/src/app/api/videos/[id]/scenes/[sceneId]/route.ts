@@ -42,13 +42,18 @@ export async function PATCH(
       data: {
         ...body,
         ...(textChanged ? { audioPath: null, wordsJson: '[]' } : {}),
-        ...(visualChanged ? { imagePath: null, status: 'PENDING' } : {}),
+        ...(visualChanged ? { imagePath: null, clipPath: null, status: 'PENDING' } : {}),
         ...(textChanged || visualChanged ? { locked: false } : {}),
       },
     });
 
     return ok({
-      scene: { ...updated, imageUrl: mediaUrl(updated.imagePath), audioUrl: mediaUrl(updated.audioPath) },
+      scene: {
+        ...updated,
+        imageUrl: mediaUrl(updated.imagePath),
+        clipUrl: mediaUrl(updated.clipPath),
+        audioUrl: mediaUrl(updated.audioPath),
+      },
       invalidated: { audio: textChanged, visual: visualChanged },
     });
   } catch (error) {

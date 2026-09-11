@@ -75,7 +75,7 @@ function styleSpec(style: CaptionStyle, height: number): StyleSpec {
       return { fontSize: Math.round(62 * unit), marginV: Math.round(150 * unit), outline: Math.round(4 * unit), alignment: 2, bold: 0, wordsPerLine: 10 };
     case 'karaoke':
     default:
-      return { fontSize: Math.round(96 * unit), marginV: Math.round(520 * unit), outline: Math.round(8 * unit), alignment: 2, bold: -1, wordsPerLine: 4 };
+      return { fontSize: Math.round(84 * unit), marginV: Math.round(520 * unit), outline: Math.round(7 * unit), alignment: 2, bold: -1, wordsPerLine: 3 };
   }
 }
 
@@ -88,7 +88,9 @@ function header(opts: CaptionOptions, spec: StyleSpec, width: number, height: nu
     'ScriptType: v4.00+',
     `PlayResX: ${width}`,
     `PlayResY: ${height}`,
-    'WrapStyle: 2',
+    // 0 = wrap within the margins, balancing lines. WrapStyle 2 disables
+    // wrapping entirely, which lets a long caption run off both edges.
+    'WrapStyle: 0',
     'ScaledBorderAndShadow: yes',
     '',
     '[V4+ Styles]',

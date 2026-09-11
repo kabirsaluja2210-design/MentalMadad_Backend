@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { db } from '@/lib/db';
 import { parseJson, stringifyJson } from '@/lib/json';
 import { ensureDir, storagePath, writeFile, fileSize } from '@/lib/storage';
-import { getImage, getLlm, getMusic, getTts } from '@/providers/registry';
+import { getImage, getLlm, getMusic, getTts, getVideo } from '@/providers/registry';
 import type { ScriptBeat, WordTiming } from '@/providers/types';
 import { getMode, resolveOptions } from './modes';
 import { buildAss, type CaptionScene, type CaptionStyle } from './captions';
@@ -132,27 +132,56 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
   await onProgress('voice', progressAt('voice', 1), 'Voiceover complete');
 
   // --------------------------------------------------------------- visuals
+  // 'auto' follows the format's default; an explicit setting overrides it.
+  const wantsVideo =
+    video.visualOutput === 'video' ||
+    (video.visualOutput === 'auto' && mode.visualOutput === 'video');
+
   const image = getImage();
+  const clipper = getVideo();
+
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
-    await onProgress('visuals', progressAt('visuals', i / scenes.length), `Rendering visual ${i + 1}/${scenes.length}`);
+    const label = wantsVideo ? 'clip' : 'visual';
+    await onProgress(
+      'visuals',
+      progressAt('visuals', i / scenes.length),
+      `Generating ${label} ${i + 1}/${scenes.length}`,
+    );
 
-    if (scene.locked && scene.imagePath) continue;
+    // A locked scene keeps whatever asset the editor last produced.
+    if (scene.locked && (scene.clipPath || scene.imagePath)) continue;
 
-    const result = await image.generate({
-      prompt: scene.visualPrompt || scene.text,
-      aspect: video.aspect,
-      seed: hashSeed(`${video.id}:${scene.index}:${scene.visualPrompt}`),
-      style: mode.visualStyle,
-      outPath: `${workDir}/scene-${scene.index}.png`,
-    });
+    const seed = hashSeed(`${video.id}:${scene.index}:${scene.visualPrompt}`);
 
-    scenes[i] = await db.scene.update({
-      where: { id: scene.id },
-      data: { imagePath: result.imagePath, status: 'READY' },
-    });
+    if (wantsVideo) {
+      const result = await clipper.generate({
+        prompt: scene.visualPrompt || scene.text,
+        aspect: video.aspect,
+        seed,
+        style: mode.visualStyle,
+        durationMs: scene.durationMs,
+        outPath: `${workDir}/scene-${scene.index}.mp4`,
+      });
+      scenes[i] = await db.scene.update({
+        where: { id: scene.id },
+        data: { clipPath: result.clipPath, visualKind: 'video', status: 'READY' },
+      });
+    } else {
+      const result = await image.generate({
+        prompt: scene.visualPrompt || scene.text,
+        aspect: video.aspect,
+        seed,
+        style: mode.visualStyle,
+        outPath: `${workDir}/scene-${scene.index}.png`,
+      });
+      scenes[i] = await db.scene.update({
+        where: { id: scene.id },
+        data: { imagePath: result.imagePath, visualKind: 'image', status: 'READY' },
+      });
+    }
   }
-  await onProgress('visuals', progressAt('visuals', 1), 'Visuals ready');
+  await onProgress('visuals', progressAt('visuals', 1), wantsVideo ? 'Clips ready' : 'Visuals ready');
 
   // -------------------------------------------------------------- captions
   await onProgress('captions', progressAt('captions', 0), 'Timing captions');
@@ -197,14 +226,18 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
     const scene = scenes[i];
     await onProgress('compose', progressAt('compose', i / scenes.length), `Composing clip ${i + 1}/${scenes.length}`);
 
-    if (!scene.imagePath) throw new PipelineError(`Scene ${scene.index} has no visual`, 'compose');
+    const source = sceneSource(scene);
+    if (!source) throw new PipelineError(`Scene ${scene.index} has no visual`, 'compose');
 
     const clipPath = `${workDir}/clip-${scene.index}.mp4`;
     await renderSceneClip({
-      imagePath: scene.imagePath,
+      visualPath: source.path,
+      visualKind: source.kind,
       audioPath: scene.audioPath,
       durationMs: scene.durationMs,
-      motion: scene.motion,
+      // A generated clip already moves, so only apply a camera move on top
+      // when the scene asks for one beyond the format's default.
+      motion: source.kind === 'video' ? 'static' : scene.motion,
       aspect: video.aspect,
       outPath: clipPath,
     });
@@ -274,6 +307,17 @@ async function createScenesFromBeats(
     );
   }
   return created;
+}
+
+/** Resolves which asset a scene should be composed from. */
+function sceneSource(
+  scene: { clipPath: string | null; imagePath: string | null; visualKind: string },
+): { path: string; kind: 'image' | 'video' } | null {
+  if (scene.visualKind === 'video' && scene.clipPath) return { path: scene.clipPath, kind: 'video' };
+  if (scene.imagePath) return { path: scene.imagePath, kind: 'image' };
+  // Fall back to whichever asset exists, so a half-migrated scene still renders.
+  if (scene.clipPath) return { path: scene.clipPath, kind: 'video' };
+  return null;
 }
 
 function hashSeed(input: string): number {

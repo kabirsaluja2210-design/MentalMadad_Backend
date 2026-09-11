@@ -13,6 +13,7 @@ const patchSchema = z.object({
   cta: z.string().max(500).optional(),
   voiceId: z.string().nullable().optional(),
   aspect: z.enum(['9:16', '1:1', '16:9']).optional(),
+  visualOutput: z.enum(['auto', 'image', 'video']).optional(),
   options: z.record(z.unknown()).optional(),
 });
 
@@ -48,6 +49,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         scenes: video.scenes.map((s) => ({
           ...s,
           imageUrl: mediaUrl(s.imagePath),
+          clipUrl: mediaUrl(s.clipPath),
           audioUrl: mediaUrl(s.audioPath),
           words: parseJson(s.wordsJson, []),
         })),
@@ -76,6 +78,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         ...(body.cta !== undefined ? { cta: body.cta } : {}),
         ...(body.voiceId !== undefined ? { voiceId: body.voiceId } : {}),
         ...(body.aspect !== undefined ? { aspect: body.aspect } : {}),
+        ...(body.visualOutput !== undefined ? { visualOutput: body.visualOutput } : {}),
         ...(body.options !== undefined ? { optionsJson: JSON.stringify(body.options) } : {}),
       },
     });

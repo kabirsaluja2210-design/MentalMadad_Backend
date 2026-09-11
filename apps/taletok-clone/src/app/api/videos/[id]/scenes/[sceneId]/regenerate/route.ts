@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { mediaUrl } from '@/lib/storage';
 import { stringifyJson } from '@/lib/json';
-import { getLlm, getImage, getTts } from '@/providers/registry';
+import { getLlm, getImage, getTts, getVideo } from '@/providers/registry';
 import { getMode } from '@/pipeline/modes';
 import { hashString } from '@/lib/media-encode';
 import { handleError, ok, parseBody, fail } from '@/lib/api';
@@ -73,28 +73,60 @@ export async function POST(
     }
 
     let imagePath = scene.imagePath;
+    let clipPath = scene.clipPath;
+    let visualKind = scene.visualKind;
+
     if (body.parts.includes('visual') || body.parts.includes('script')) {
-      // Re-seed so a reroll of an unchanged prompt still yields a new frame.
-      const result = await getImage().generate({
-        prompt: visualPrompt || text,
-        aspect: video.aspect,
-        seed: hashString(`${scene.id}:${visualPrompt}:${Date.now()}`),
-        style: mode.visualStyle,
-        outPath: `${workDir}/scene-${scene.index}.png`,
-      });
-      imagePath = result.imagePath;
+      // Honour an explicit per-scene kind, else the video's, else the format's.
+      const wantsVideo =
+        video.visualOutput === 'video' ||
+        (video.visualOutput === 'auto' && mode.visualOutput === 'video');
+
+      // Re-seed so a reroll of an unchanged prompt still yields something new.
+      const seed = hashString(`${scene.id}:${visualPrompt}:${Date.now()}`);
+
+      if (wantsVideo) {
+        const result = await getVideo().generate({
+          prompt: visualPrompt || text,
+          aspect: video.aspect,
+          seed,
+          style: mode.visualStyle,
+          durationMs,
+          outPath: `${workDir}/scene-${scene.index}.mp4`,
+        });
+        clipPath = result.clipPath;
+        visualKind = 'video';
+      } else {
+        const result = await getImage().generate({
+          prompt: visualPrompt || text,
+          aspect: video.aspect,
+          seed,
+          style: mode.visualStyle,
+          outPath: `${workDir}/scene-${scene.index}.png`,
+        });
+        imagePath = result.imagePath;
+        visualKind = 'image';
+      }
     }
 
     const updated = await db.scene.update({
       where: { id: scene.id },
-      data: { text, visualPrompt, audioPath, imagePath, durationMs, wordsJson: words, status: 'READY' },
+      data: {
+        text, visualPrompt, audioPath, imagePath, clipPath, visualKind,
+        durationMs, wordsJson: words, status: 'READY',
+      },
     });
 
     // The finished cut no longer matches the scenes.
     await db.video.update({ where: { id: video.id }, data: { status: 'DRAFT' } });
 
     return ok({
-      scene: { ...updated, imageUrl: mediaUrl(updated.imagePath), audioUrl: mediaUrl(updated.audioPath) },
+      scene: {
+        ...updated,
+        imageUrl: mediaUrl(updated.imagePath),
+        clipUrl: mediaUrl(updated.clipPath),
+        audioUrl: mediaUrl(updated.audioPath),
+      },
     });
   } catch (error) {
     return handleError(error);

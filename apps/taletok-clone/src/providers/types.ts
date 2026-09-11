@@ -8,7 +8,7 @@
  * The pipeline code never learns which one it got.
  */
 
-export type ProviderKind = 'llm' | 'tts' | 'image' | 'music' | 'social';
+export type ProviderKind = 'llm' | 'tts' | 'image' | 'video' | 'music' | 'social';
 
 export interface ProviderInfo {
   /** Stable id, e.g. "stub", "openai", "elevenlabs". */
@@ -130,6 +130,34 @@ export interface ImageResult {
 export interface ImageProvider {
   info: ProviderInfo;
   generate(req: ImageRequest): Promise<ImageResult>;
+}
+
+// ------------------------------------------------------------ motion clips
+
+export interface VideoRequest {
+  prompt: string;
+  aspect: string;
+  /** Deterministic output for the same seed — keeps re-renders stable. */
+  seed: number;
+  style?: string;
+  /** How long the scene needs. Providers may return a shorter loopable clip. */
+  durationMs: number;
+  outPath: string;
+}
+
+export interface VideoResult {
+  clipPath: string;
+  width: number;
+  height: number;
+  /** Actual length of the returned clip, which may be under what was asked. */
+  durationMs: number;
+  /** True when the clip can be looped without a visible seam. */
+  seamless: boolean;
+}
+
+export interface VideoProvider {
+  info: ProviderInfo;
+  generate(req: VideoRequest): Promise<VideoResult>;
 }
 
 // -------------------------------------------------------------------- music

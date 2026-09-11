@@ -36,6 +36,7 @@ export function CreateForm({
   const [aspect, setAspect] = useState(mode.defaultAspect);
   const [duration, setDuration] = useState(mode.defaultDurationSec);
   const [voiceId, setVoiceId] = useState(voices[0]?.id ?? '');
+  const [visualOutput, setVisualOutput] = useState<'auto' | 'image' | 'video'>('auto');
   const [options, setOptions] = useState<Record<string, string | number | boolean>>(() =>
     Object.fromEntries(mode.options.map((o) => [o.key, o.default])),
   );
@@ -61,6 +62,7 @@ export function CreateForm({
           mode: modeId,
           topic,
           aspect,
+          visualOutput,
           durationSec: duration,
           voiceId: voiceId || undefined,
           sourceType,
@@ -243,6 +245,31 @@ export function CreateForm({
               <span>{mode.minDurationSec}s</span>
               <span>{mode.maxDurationSec}s</span>
             </div>
+          </div>
+
+          <div>
+            <label className="label">Scene visuals</label>
+            <div className="space-y-1.5">
+              {([
+                { value: 'auto', label: `Auto — ${mode.visualOutput === 'video' ? 'motion clips' : 'still frames'} for ${mode.name}` },
+                { value: 'video', label: 'Generated motion clips' },
+                { value: 'image', label: 'Still frames with camera moves' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value} type="button" onClick={() => setVisualOutput(opt.value)}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                    visualOutput === opt.value
+                      ? 'border-brand-500 bg-brand-500/10 text-brand-400'
+                      : 'border-white/10 text-slate-400 hover:border-white/25'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Clips take longer to generate than stills.
+            </p>
           </div>
 
           <div>

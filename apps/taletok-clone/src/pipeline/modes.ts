@@ -33,6 +33,12 @@ export interface VideoMode {
   /** Seconds of narration per beat — controls scene pacing. */
   secondsPerBeat: number;
   visualStyle: string;
+  /**
+   * Whether scenes default to a generated motion clip or a still frame.
+   * Stills are cheaper and read better for card-like formats; clips suit
+   * formats whose visuals are atmosphere rather than information.
+   */
+  visualOutput: 'image' | 'video';
   captionStyle: 'karaoke' | 'block' | 'word-pop' | 'classic';
   /** Motion pool the compositor cycles through. */
   motions: string[];
@@ -66,6 +72,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['reddit', 'prompt', 'idea', 'url'],
     secondsPerBeat: 4.5,
     visualStyle: 'background-loop',
+    visualOutput: 'video',
     captionStyle: 'karaoke',
     motions: ['static', 'pan-left', 'pan-right'],
     musicMood: 'tense-lofi',
@@ -95,6 +102,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 5,
     visualStyle: 'cinematic-3d',
+    visualOutput: 'video',
     captionStyle: 'block',
     motions: ['kenburns-in', 'kenburns-out', 'zoom-pulse'],
     musicMood: 'epic-ambient',
@@ -130,6 +138,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'url', 'idea', 'upload'],
     secondsPerBeat: 4,
     visualStyle: 'illustrated',
+    visualOutput: 'video',
     captionStyle: 'word-pop',
     motions: ['kenburns-in', 'pan-right', 'zoom-pulse', 'kenburns-out'],
     musicMood: 'upbeat-electronic',
@@ -162,6 +171,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 3.5,
     visualStyle: 'timelapse-frames',
+    visualOutput: 'video',
     captionStyle: 'classic',
     motions: ['kenburns-in'],
     musicMood: 'epic-ambient',
@@ -189,6 +199,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'reddit', 'url', 'idea'],
     secondsPerBeat: 12,
     visualStyle: 'illustrated',
+    visualOutput: 'image',
     captionStyle: 'classic',
     motions: ['kenburns-in', 'kenburns-out', 'pan-left', 'pan-right'],
     musicMood: 'calm-underscore',
@@ -213,6 +224,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 6,
     visualStyle: 'graphic-card',
+    visualOutput: 'image',
     captionStyle: 'block',
     motions: ['static', 'zoom-pulse'],
     musicMood: 'upbeat-electronic',
@@ -242,6 +254,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea', 'url'],
     secondsPerBeat: 5,
     visualStyle: 'illustrated',
+    visualOutput: 'image',
     captionStyle: 'word-pop',
     motions: ['kenburns-in', 'pan-left'],
     musicMood: 'upbeat-electronic',
@@ -270,6 +283,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 3,
     visualStyle: 'chat-thread',
+    visualOutput: 'image',
     captionStyle: 'classic',
     motions: ['static'],
     musicMood: 'tense-lofi',
@@ -299,6 +313,7 @@ export const VIDEO_MODES: VideoMode[] = [
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 3.5,
     visualStyle: 'typography',
+    visualOutput: 'video',
     captionStyle: 'word-pop',
     motions: ['zoom-pulse', 'kenburns-in'],
     musicMood: 'epic-ambient',

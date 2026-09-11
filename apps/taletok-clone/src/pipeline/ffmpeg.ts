@@ -135,8 +135,12 @@ function motionFilter(motion: string, frames: number, width: number, height: num
 
 // ------------------------------------------------------------- scene clips
 
+export type VisualKind = 'image' | 'video';
+
 export interface SceneClipOptions {
-  imagePath: string;
+  /** Still frame or pre-rendered motion clip for this scene. */
+  visualPath: string;
+  visualKind: VisualKind;
   audioPath: string | null;
   durationMs: number;
   motion: string;
@@ -144,7 +148,14 @@ export interface SceneClipOptions {
   outPath: string;
 }
 
-/** Renders one scene: a still image with camera motion, plus its narration. */
+/**
+ * Renders one scene to a clip.
+ *
+ * A still is held for the scene duration and given camera motion. A generated
+ * video clip is looped to fill the duration instead, and only gets camera
+ * motion when the scene explicitly asks for it — the clip already carries its
+ * own movement, so stacking a push-in on top usually reads as drift.
+ */
 export async function renderSceneClip(opts: SceneClipOptions): Promise<string> {
   const { width, height } = dimensionsFor(opts.aspect);
   const seconds = Math.max(0.4, opts.durationMs / 1000);
@@ -152,11 +163,17 @@ export async function renderSceneClip(opts: SceneClipOptions): Promise<string> {
 
   await ensureDir(path.dirname(storagePath(opts.outPath)));
 
-  const args = [
-    '-y', '-hide_banner', '-loglevel', 'error',
-    '-loop', '1', '-framerate', String(FPS), '-t', seconds.toFixed(3),
-    '-i', storagePath(opts.imagePath),
-  ];
+  const args = ['-y', '-hide_banner', '-loglevel', 'error'];
+
+  if (opts.visualKind === 'video') {
+    // Loop the source so a short clip still covers a long scene.
+    args.push('-stream_loop', '-1', '-t', seconds.toFixed(3), '-i', storagePath(opts.visualPath));
+  } else {
+    args.push(
+      '-loop', '1', '-framerate', String(FPS), '-t', seconds.toFixed(3),
+      '-i', storagePath(opts.visualPath),
+    );
+  }
 
   if (opts.audioPath) {
     args.push('-i', storagePath(opts.audioPath));
@@ -166,16 +183,73 @@ export async function renderSceneClip(opts: SceneClipOptions): Promise<string> {
   }
 
   args.push(
-    '-vf', motionFilter(opts.motion, frames, width, height),
+    '-vf', sceneFilter(opts.visualKind, opts.motion, frames, width, height),
     '-t', seconds.toFixed(3),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p',
     '-r', String(FPS), '-g', String(FPS * 2),
     '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+    '-map', '0:v:0', '-map', '1:a:0',
     '-shortest',
     storagePath(opts.outPath),
   );
 
   await run(FFMPEG, args);
+  return opts.outPath;
+}
+
+/** Picks the filter chain for a scene given its source kind. */
+function sceneFilter(
+  kind: VisualKind, motion: string, frames: number, width: number, height: number,
+): string {
+  if (kind === 'video' && (motion === 'static' || !motion)) {
+    // Trust the generated motion; just conform format and size.
+    return (
+      `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+      `crop=${width}:${height},fps=${FPS},format=yuv420p,setsar=1`
+    );
+  }
+  return motionFilter(motion, frames, width, height);
+}
+
+// ------------------------------------------------------- frame sequences
+
+export interface FrameSequenceOptions {
+  /** Directory holding frames named frame-00001.png, relative to storage. */
+  frameDir: string;
+  sourceFps: number;
+  outPath: string;
+  width: number;
+  height: number;
+  /** Interpolate up to the pipeline frame rate for smoother motion. */
+  smooth?: boolean;
+}
+
+/**
+ * Encodes a rendered PNG sequence into a silent H.264 clip.
+ *
+ * Frames are generated at a lower rate than playback (generating 30fps of
+ * procedural pixels in JS is far too slow), so by default the `framerate`
+ * filter blends them up to the pipeline rate rather than duplicating, which
+ * keeps slow abstract motion smooth instead of stepped.
+ */
+export async function encodeFrameSequence(opts: FrameSequenceOptions): Promise<string> {
+  await ensureDir(path.dirname(storagePath(opts.outPath)));
+
+  const filters = [`scale=${opts.width}:${opts.height}`];
+  if (opts.smooth !== false) filters.push(`framerate=fps=${FPS}`);
+  filters.push('format=yuv420p', 'setsar=1');
+
+  await run(FFMPEG, [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-framerate', String(opts.sourceFps),
+    '-i', storagePath(path.join(opts.frameDir, 'frame-%05d.png')),
+    '-vf', filters.join(','),
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-r', String(FPS),
+    '-an',
+    storagePath(opts.outPath),
+  ]);
+
   return opts.outPath;
 }
 

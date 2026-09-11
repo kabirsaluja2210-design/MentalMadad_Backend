@@ -8,15 +8,16 @@ import { api, Banner, ProgressBar, StatusPill, formatDuration, usePoll } from '.
 /** Shapes passed down from the server component. */
 interface Scene {
   id: string; index: number; text: string; visualPrompt: string; motion: string;
-  durationMs: number; locked: boolean; status: string;
-  imageUrl: string | null; audioUrl: string | null; wordCount: number;
+  durationMs: number; locked: boolean; status: string; visualKind: string;
+  imageUrl: string | null; clipUrl: string | null; audioUrl: string | null; wordCount: number;
 }
 interface Post {
   id: string; status: string; scheduledFor: string; platform: string;
   handle: string; postedUrl: string | null; error: string | null;
 }
 interface VideoData {
-  id: string; title: string; status: string; aspect: string; mode: string; topic: string;
+  id: string; title: string; status: string; aspect: string; visualOutput: string;
+  mode: string; topic: string;
   hook: string; cta: string; script: string; voiceId: string | null; actualDurationMs: number;
   outputUrl: string | null; thumbnailUrl: string | null;
   job: { status: string; stage: string; progress: number; error: string | null } | null;
@@ -179,6 +180,23 @@ export function VideoEditor({
               </select>
             </div>
             <div>
+              <label className="label" htmlFor="visualOutput">Scene visuals</label>
+              <select
+                id="visualOutput" className="field" defaultValue={video.visualOutput}
+                onChange={(e) => act('visualOutput', () =>
+                  api(`/api/videos/${video.id}`, {
+                    method: 'PATCH', body: JSON.stringify({ visualOutput: e.target.value }),
+                  }))}
+              >
+                <option value="auto">Auto — follow the {mode.name} default</option>
+                <option value="video">Generated motion clips</option>
+                <option value="image">Still frames with camera moves</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Takes effect on the next render.
+              </p>
+            </div>
+            <div>
               <p className="label">Hook</p>
               <p className="rounded-lg bg-white/5 p-2 text-sm text-slate-300">{video.hook || '—'}</p>
             </div>
@@ -218,7 +236,14 @@ export function VideoEditor({
                       <div className={`overflow-hidden rounded bg-ink-800 ${
                         video.aspect === '16:9' ? 'aspect-video' : 'aspect-[9/16]'
                       }`}>
-                        {scene.imageUrl ? (
+                        {scene.visualKind === 'video' && scene.clipUrl ? (
+                          // Muted autoplay so the timeline shows the actual motion.
+                          <video
+                            src={scene.clipUrl}
+                            muted loop autoPlay playsInline
+                            className="h-full w-full object-cover"
+                          />
+                        ) : scene.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={scene.imageUrl} alt="" className="h-full w-full object-cover" />
                         ) : (
@@ -234,7 +259,9 @@ export function VideoEditor({
                       <div className="mb-2 flex items-center gap-2">
                         <span className="pill bg-white/5 text-slate-400">#{i + 1}</span>
                         {scene.locked && <span className="pill bg-amber-500/15 text-amber-300">locked</span>}
-                        <span className="text-xs text-slate-600">{scene.motion}</span>
+                        <span className="text-xs text-slate-600">
+                          {scene.visualKind === 'video' ? 'motion clip' : scene.motion}
+                        </span>
                         <div className="ml-auto flex gap-1">
                           <button onClick={() => move(i, -1)} disabled={i === 0 || busy !== null}
                                   className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-30"
@@ -252,7 +279,9 @@ export function VideoEditor({
                         <button onClick={() => regenerate(scene.id, ['script'])} disabled={busy !== null}
                                 className="btn-ghost px-2.5 py-1 text-xs">Reroll script</button>
                         <button onClick={() => regenerate(scene.id, ['visual'])} disabled={busy !== null}
-                                className="btn-ghost px-2.5 py-1 text-xs">Reroll visual</button>
+                                className="btn-ghost px-2.5 py-1 text-xs">
+                          {scene.visualKind === 'video' ? 'Reroll clip' : 'Reroll visual'}
+                        </button>
                         <button onClick={() => regenerate(scene.id, ['voice'])} disabled={busy !== null}
                                 className="btn-ghost px-2.5 py-1 text-xs">Revoice</button>
                         <button onClick={() => patchScene(scene.id, { locked: !scene.locked })} disabled={busy !== null}
@@ -288,9 +317,15 @@ export function VideoEditor({
                             <div>
                               <label className="label">Camera move</label>
                               <select className="field" defaultValue={scene.motion}
+                                      disabled={scene.visualKind === 'video'}
                                       onChange={(e) => patchScene(scene.id, { motion: e.target.value })}>
                                 {MOTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
                               </select>
+                              {scene.visualKind === 'video' && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  The generated clip carries its own motion.
+                                </p>
+                              )}
                             </div>
                             <div>
                               <label className="label">Duration (seconds)</label>

@@ -69,6 +69,23 @@ describe('buildAss', () => {
     expect(events).toHaveLength(1);
   });
 
+  it('enables wrapping so a long line cannot run off the frame', () => {
+    const ass = buildAss([sceneAt(0, 'Hello')], { ...opts, style: 'karaoke' });
+    expect(ass).toContain('WrapStyle: 0');
+    expect(ass).not.toContain('WrapStyle: 2');
+  });
+
+  it('leaves a side margin on every caption style', () => {
+    for (const style of ['karaoke', 'block', 'word-pop', 'classic'] as const) {
+      const ass = buildAss([sceneAt(0, 'Hello there')], { ...opts, style });
+      const styleLine = ass.split('\n').find((l) => l.startsWith('Style: Main'))!;
+      const parts = styleLine.split(',');
+      // MarginL and MarginR are the 20th and 21st fields of a V4+ style.
+      expect(Number(parts[19]), `${style} MarginL`).toBeGreaterThan(0);
+      expect(Number(parts[20]), `${style} MarginR`).toBeGreaterThan(0);
+    }
+  });
+
   it('neutralises braces so text cannot inject override tags', () => {
     const ass = buildAss([sceneAt(0, '{\\fs99}injected')], { ...opts, style: 'classic' });
     expect(ass).not.toContain('{\\fs99}');
