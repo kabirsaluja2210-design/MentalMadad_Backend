@@ -251,6 +251,7 @@ with a built-in stub. Resolution per stage: an explicit `*_PROVIDER` env var →
 first provider that has credentials → the stub.
 
 ```bash
+GEMINI_API_KEY=...        # free tier — model-written scripts
 ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY  — model-written scripts
 ELEVENLABS_API_KEY=...    # or OPENAI_API_KEY  — real voiceover
 IMAGE_PROVIDER=replicate
@@ -263,8 +264,19 @@ Stages are independent — model-written scripts over placeholder visuals is a
 normal, supported configuration. Hosted adapters fall back to the stub on any
 error rather than failing a render. **No code changes are needed anywhere.**
 
-Adapters are already written for Anthropic, OpenAI (chat/speech/images),
-ElevenLabs, Replicate (images **and** video) and Luma.
+Adapters are already written for Google Gemini, Anthropic, OpenAI
+(chat/speech/images), ElevenLabs, Replicate (images **and** video) and Luma.
+
+**Gemini is the one with a genuinely free tier** (`aistudio.google.com/apikey`,
+no card), which makes it the cheapest way to replace the built-in template
+scripts with model-written ones. Its native API is *not* OpenAI-compatible —
+the model goes in the URL path, the key travels in an `x-goog-api-key` header,
+and prompts and responses nest under `contents`/`parts` — so it gets its own
+request shape rather than reusing the OpenAI adapter. Response parts are joined
+rather than taking the first, since long scripts arrive split across several.
+
+There is no free tier for video generation anywhere; every text-to-video API is
+billed per clip.
 
 Video models are slow and expensive relative to the rest of the pipeline, so
 those adapters poll with a generous ceiling (`VIDEO_TIMEOUT_MS`, default 5min)

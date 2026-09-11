@@ -2,7 +2,7 @@ import type {
   ImageProvider, LlmProvider, MusicProvider, ProviderInfo, TtsProvider, VideoProvider,
 } from './types';
 import { stubLlm } from './llm/stub';
-import { anthropicLlm, openaiLlm } from './llm/hosted';
+import { anthropicLlm, geminiLlm, openaiLlm } from './llm/hosted';
 import { stubTts } from './tts/stub';
 import { elevenLabsTts, openaiTts } from './tts/hosted';
 import { localTts } from './tts/local';
@@ -41,7 +41,7 @@ function pick<T extends { info: ProviderInfo }>(
 }
 
 export function getLlm(): LlmProvider {
-  return pick(process.env.LLM_PROVIDER, [anthropicLlm, openaiLlm], stubLlm);
+  return pick(process.env.LLM_PROVIDER, [anthropicLlm, openaiLlm, geminiLlm], stubLlm);
 }
 
 /**
@@ -87,7 +87,7 @@ export interface ProviderStatus {
 /** Powers the Settings > Providers screen. */
 export function providerStatus(): ProviderStatus[] {
   return [
-    { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, anthropicLlm.info, openaiLlm.info] },
+    { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, geminiLlm.info, anthropicLlm.info, openaiLlm.info] },
     { kind: 'tts', active: getTts().info, alternatives: [localTts.info, stubTts.info, elevenLabsTts.info, openaiTts.info] },
     { kind: 'image', active: getImage().info, alternatives: [stubImage.info, openaiImage.info, replicateImage.info] },
     { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, blenderVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },

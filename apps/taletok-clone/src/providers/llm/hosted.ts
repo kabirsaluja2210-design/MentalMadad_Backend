@@ -13,11 +13,18 @@ import { stubLlm } from './stub';
  */
 
 interface HostedConfig {
-  id: 'anthropic' | 'openai';
+  id: 'anthropic' | 'openai' | 'gemini';
   name: string;
   apiKey: string | undefined;
+  /** May contain {model}, substituted at call time. */
   endpoint: string;
   model: string;
+  /** Auth and content headers for this vendor. */
+  headers: (apiKey: string) => Record<string, string>;
+  /** Request body in this vendor's own shape. */
+  body: (prompt: string, model: string) => unknown;
+  /** Pulls the assistant text out of this vendor's response shape. */
+  extract: (json: Record<string, unknown>) => string;
 }
 
 function buildPrompt(req: ScriptRequest, options: Record<string, unknown>): string {
@@ -65,27 +72,16 @@ function parseScriptJson(raw: string): { title: string; hook: string; cta: strin
 }
 
 async function callModel(cfg: HostedConfig, prompt: string): Promise<string> {
-  const isAnthropic = cfg.id === 'anthropic';
+  const endpoint = cfg.endpoint.replace('{model}', encodeURIComponent(cfg.model));
 
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (isAnthropic) {
-    headers['x-api-key'] = cfg.apiKey!;
-    headers['anthropic-version'] = '2023-06-01';
-  } else {
-    headers.authorization = `Bearer ${cfg.apiKey}`;
-  }
-
-  const body = isAnthropic
-    ? { model: cfg.model, max_tokens: 4096, messages: [{ role: 'user', content: prompt }] }
-    : { model: cfg.model, messages: [{ role: 'user', content: prompt }] };
-
-  const res = await fetch(cfg.endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: cfg.headers(cfg.apiKey!),
+    body: JSON.stringify(cfg.body(prompt, cfg.model)),
+  });
   if (!res.ok) throw new Error(`${cfg.name} responded ${res.status}: ${await res.text()}`);
 
-  const json = await res.json();
-  return isAnthropic
-    ? (json.content?.[0]?.text ?? '')
-    : (json.choices?.[0]?.message?.content ?? '');
+  return cfg.extract(await res.json());
 }
 
 function makeHostedLlm(cfg: HostedConfig): LlmProvider {
@@ -176,6 +172,20 @@ export const anthropicLlm = makeHostedLlm({
   apiKey: process.env.ANTHROPIC_API_KEY,
   endpoint: 'https://api.anthropic.com/v1/messages',
   model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
+  headers: (key) => ({
+    'content-type': 'application/json',
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+  }),
+  body: (prompt, model) => ({
+    model,
+    max_tokens: 4096,
+    messages: [{ role: 'user', content: prompt }],
+  }),
+  extract: (json) => {
+    const content = json.content as { text?: string }[] | undefined;
+    return content?.[0]?.text ?? '';
+  },
 });
 
 export const openaiLlm = makeHostedLlm({
@@ -184,4 +194,36 @@ export const openaiLlm = makeHostedLlm({
   apiKey: process.env.OPENAI_API_KEY,
   endpoint: 'https://api.openai.com/v1/chat/completions',
   model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  headers: (key) => ({ 'content-type': 'application/json', authorization: `Bearer ${key}` }),
+  body: (prompt, model) => ({ model, messages: [{ role: 'user', content: prompt }] }),
+  extract: (json) => {
+    const choices = json.choices as { message?: { content?: string } }[] | undefined;
+    return choices?.[0]?.message?.content ?? '';
+  },
+});
+
+/**
+ * Google Gemini.
+ *
+ * Its native API is not OpenAI-compatible: the model goes in the URL path, the
+ * key travels in an x-goog-api-key header, and prompts and responses are nested
+ * under contents/parts rather than messages. Hence the per-vendor shape above.
+ */
+export const geminiLlm = makeHostedLlm({
+  id: 'gemini',
+  name: 'Google Gemini',
+  apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
+  endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+  model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  headers: (key) => ({ 'content-type': 'application/json', 'x-goog-api-key': key }),
+  body: (prompt) => ({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.9, maxOutputTokens: 4096 },
+  }),
+  extract: (json) => {
+    const candidates = json.candidates as
+      { content?: { parts?: { text?: string }[] } }[] | undefined;
+    // Parts can be split across several entries; join rather than take the first.
+    return (candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+  },
 });
