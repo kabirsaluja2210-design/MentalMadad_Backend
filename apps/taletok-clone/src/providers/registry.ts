@@ -5,6 +5,7 @@ import { stubLlm } from './llm/stub';
 import { anthropicLlm, openaiLlm } from './llm/hosted';
 import { stubTts } from './tts/stub';
 import { elevenLabsTts, openaiTts } from './tts/hosted';
+import { localTts } from './tts/local';
 import { stubImage } from './image/stub';
 import { openaiImage, replicateImage } from './image/hosted';
 import { stubVideo } from './video/stub';
@@ -43,8 +44,13 @@ export function getLlm(): LlmProvider {
   return pick(process.env.LLM_PROVIDER, [anthropicLlm, openaiLlm], stubLlm);
 }
 
+/**
+ * Speech selection. A hosted voice wins when configured, but local synthesis
+ * is preferred over the silent placeholder: robotic speech still carries the
+ * script, and silence does not.
+ */
 export function getTts(): TtsProvider {
-  return pick(process.env.TTS_PROVIDER, [elevenLabsTts, openaiTts], stubTts);
+  return pick(process.env.TTS_PROVIDER, [elevenLabsTts, openaiTts, localTts], stubTts);
 }
 
 export function getImage(): ImageProvider {
@@ -82,7 +88,7 @@ export interface ProviderStatus {
 export function providerStatus(): ProviderStatus[] {
   return [
     { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, anthropicLlm.info, openaiLlm.info] },
-    { kind: 'tts', active: getTts().info, alternatives: [stubTts.info, elevenLabsTts.info, openaiTts.info] },
+    { kind: 'tts', active: getTts().info, alternatives: [localTts.info, stubTts.info, elevenLabsTts.info, openaiTts.info] },
     { kind: 'image', active: getImage().info, alternatives: [stubImage.info, openaiImage.info, replicateImage.info] },
     { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, blenderVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },
     { kind: 'music', active: getMusic().info, alternatives: [stubMusic.info] },

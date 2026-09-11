@@ -5,6 +5,10 @@ out/
 next-env.d.ts
 .env
 .env.local
+# The repository root ignores .env.* which also catches .env.example -- the one
+# env file that must be committed, since it documents every option. A negation
+# in a nested .gitignore takes precedence over the parent pattern.
+!.env.example
 prisma/dev.db
 prisma/dev.db-journal
 public/renders/*

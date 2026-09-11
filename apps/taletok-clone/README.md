@@ -20,7 +20,7 @@ burn-in, AAC audio, `+faststart` MP4s.
 |---|---|
 | 9 video formats, each with its own pacing/visuals/captions | Working |
 | Script generation, scene breakdown, word-level caption timing | Working (offline template engine) |
-| Voiceover track + word timings | **Placeholder** — correct-length silent WAV |
+| Voiceover track + word timings | **Working** — real local speech, no API key |
 | Per-scene visuals — **generated motion clips** or stills | Procedural, but real animated MP4s |
 | **3D cel-shaded animation** — software renderer, no GPU or API | Working (real 3D) |
 | **Path-traced 3D via Blender** — real shadows, DOF, materials | Working (free, local, no key) |
@@ -46,6 +46,13 @@ cp .env.example .env        # defaults work as-is
 npm run setup               # generate client, create SQLite db, seed demo data
 npm run dev                 # web app on http://localhost:3000
 npm run worker              # in a second terminal — renders the queue
+```
+
+For spoken narration (optional but recommended — see **Speech** below):
+
+```bash
+pip install piper-tts       # small neural TTS, runs locally
+npm run fetch-voices        # ~180MB of voice models, gitignored
 ```
 
 Sign in with **`demo@reelforge.local` / `demo1234`**.
@@ -133,6 +140,34 @@ a moral.
 Formats declare the caption treatment they were designed with. A workspace brand
 kit can override it, but only when a style is explicitly chosen: `auto` (the
 default) means each format keeps its own.
+
+### Speech
+
+Narration is synthesised **locally, with no API key and no network**. Two
+engines, tried in order:
+
+| | Piper | espeak-ng |
+|---|---|---|
+| Quality | Small neural TTS, natural | Formant synthesis, robotic |
+| Setup | `pip install piper-tts` + `npm run fetch-voices` | `apt install espeak-ng`, nothing to download |
+| Speed | ~1.7s per 4s of audio | Near-instant |
+
+Piper is used whenever a voice model is on disk; otherwise espeak-ng takes over;
+if neither is installed the pipeline falls back to the silent placeholder track
+so a render never fails for want of a voice. Setting `ELEVENLABS_API_KEY` or
+`OPENAI_API_KEY` overrides both.
+
+Voice models come from GitHub releases rather than the usual Hugging Face
+mirror, because many locked-down networks block the latter. They are ~60MB each
+and live in `STORAGE_DIR/voices`, which is gitignored.
+
+Neither local engine reports word timestamps, so the estimator produces the
+caption timings and they are rescaled onto the measured audio duration — which
+keeps karaoke captions locked to the real speech.
+
+Note that the apt package named `piper` is an unrelated gaming-mouse tool that
+shadows the TTS binary on `PATH`; the provider invokes `python3 -m piper`
+explicitly to avoid it.
 
 ### Two renderers
 
@@ -309,7 +344,8 @@ handful of bands, specular response, and subject-led scene routing.
 
 ## Known gaps
 
-- Voiceover audio is silent until a TTS key is supplied.
+- Local speech is good but not broadcast quality; a hosted voice is still a
+  step up if you have one.
 - 3D sets are procedural — stylised original geometry, not photographic
   footage. Blender raises the lighting and material quality substantially but
   does not change that; a hosted video model is the only route to realism.

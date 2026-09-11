@@ -14,7 +14,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fetch-voices": "node scripts/fetch-voices.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
