@@ -1,0 +1,314 @@
+// ReelForge — faceless short-form video automation platform.
+//
+// Dev uses SQLite so the app runs with zero external services. To deploy on
+// Postgres, change `provider` to "postgresql" and point DATABASE_URL at it;
+// no model changes are required (JSON payloads are stored as TEXT columns so
+// the schema is portable across both engines).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("USER") // USER | ADMIN
+  createdAt    DateTime @default(now())
+
+  memberships Membership[]
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("FREE") // FREE | CREATOR | STUDIO | AGENCY
+  credits   Int      @default(30)
+  createdAt DateTime @default(now())
+
+  memberships      Membership[]
+  brandKit         BrandKit?
+  series           Series[]
+  videos           Video[]
+  assets           Asset[]
+  socialAccounts   SocialAccount[]
+  creditEntries    CreditEntry[]
+  providerSettings ProviderSetting[]
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        String   @default("OWNER") // OWNER | EDITOR | VIEWER
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+// ------------------------------------------------------------------ brand
+
+model BrandKit {
+  id             String  @id @default(cuid())
+  workspaceId    String  @unique
+  watermarkText  String?
+  watermarkPos   String  @default("bottom-right") // top-left|top-right|bottom-left|bottom-right|center
+  watermarkOpacity Float @default(0.75)
+  primaryColor   String  @default("#6d5cf6")
+  captionStyle   String  @default("karaoke") // karaoke | block | word-pop | classic
+  captionFont    String  @default("Inter-Bold")
+  captionColor   String  @default("#ffffff")
+  captionHighlight String @default("#ffe14d")
+  outroText      String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------------------ voices
+
+model Voice {
+  id        String  @id @default(cuid())
+  name      String
+  provider  String  @default("stub")
+  externalId String
+  gender    String  @default("neutral")
+  accent    String  @default("us")
+  style     String  @default("narration") // narration | energetic | calm | dramatic | asmr
+  previewUrl String?
+  premium   Boolean @default(false)
+
+  videos Video[]
+  series Series[]
+}
+
+// ------------------------------------------------------------------ series
+
+model Series {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  mode        String // one of the VideoMode ids
+  topic       String
+  configJson  String   @default("{}")
+  voiceId     String?
+  cadence     String   @default("daily") // daily | weekdays | weekly | every-2-days | manual
+  postTime    String   @default("17:00") // HH:mm, workspace-local
+  autoPublish Boolean  @default(false)
+  targetsJson String   @default("[]") // social account ids
+  active      Boolean  @default(true)
+  nextRunAt   DateTime?
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  voice     Voice?    @relation(fields: [voiceId], references: [id])
+  videos    Video[]
+
+  @@index([workspaceId])
+  @@index([active, nextRunAt])
+}
+
+// ------------------------------------------------------------------ videos
+
+model Video {
+  id          String   @id @default(cuid())
+  workspaceId String
+  seriesId    String?
+  title       String
+  mode        String
+  status      String   @default("DRAFT") // DRAFT|QUEUED|RENDERING|READY|FAILED|PUBLISHED
+  aspect      String   @default("9:16") // 9:16 | 1:1 | 16:9
+  targetDurationSec Int @default(45)
+  actualDurationMs  Int @default(0)
+  script      String   @default("")
+  hook        String   @default("")
+  cta         String   @default("")
+  topic       String   @default("")
+  sourceType  String   @default("prompt") // prompt | reddit | url | upload | idea
+  sourceRef   String?
+  optionsJson String   @default("{}")
+  voiceId     String?
+  musicTrack  String?
+  outputPath  String?
+  thumbnailPath String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  series    Series?   @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  voice     Voice?    @relation(fields: [voiceId], references: [id])
+  scenes    Scene[]
+  jobs      RenderJob[]
+  posts     ScheduledPost[]
+
+  @@index([workspaceId, status])
+}
+
+model Scene {
+  id           String  @id @default(cuid())
+  videoId      String
+  index        Int
+  text         String
+  visualPrompt String  @default("")
+  visualKind   String  @default("image") // image | video | color | stock
+  imagePath    String?
+  clipPath     String?
+  audioPath    String?
+  startMs      Int     @default(0)
+  durationMs   Int     @default(3000)
+  motion       String  @default("kenburns-in") // kenburns-in|kenburns-out|pan-left|pan-right|static|zoom-pulse
+  transition   String  @default("fade")
+  wordsJson    String  @default("[]") // word-level caption timings
+  status       String  @default("PENDING") // PENDING|READY|FAILED
+  locked       Boolean @default(false)
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, index])
+  @@index([videoId])
+}
+
+model RenderJob {
+  id         String    @id @default(cuid())
+  videoId    String
+  status     String    @default("QUEUED") // QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELLED
+  stage      String    @default("queued")
+  progress   Int       @default(0)
+  attempts   Int       @default(0)
+  logJson    String    @default("[]")
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------- publishing
+
+model SocialAccount {
+  id          String   @id @default(cuid())
+  workspaceId String
+  platform    String // tiktok | youtube | instagram
+  handle      String
+  displayName String   @default("")
+  status      String   @default("CONNECTED") // CONNECTED | EXPIRED | DISCONNECTED
+  accessToken String?
+  refreshToken String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  posts     ScheduledPost[]
+
+  @@index([workspaceId])
+}
+
+model ScheduledPost {
+  id              String   @id @default(cuid())
+  videoId         String
+  socialAccountId String
+  scheduledFor    DateTime
+  status          String   @default("SCHEDULED") // SCHEDULED|POSTING|POSTED|FAILED|CANCELLED
+  caption         String   @default("")
+  hashtags        String   @default("")
+  postedUrl       String?
+  error           String?
+  createdAt       DateTime @default(now())
+
+  video         Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledFor])
+}
+
+// ------------------------------------------------------------------ content
+
+model StoryIdea {
+  id         String   @id @default(cuid())
+  source     String   @default("reddit") // reddit | trending | manual
+  sourceRef  String? // e.g. subreddit or trend id
+  externalId String?  @unique
+  title      String
+  body       String   @default("")
+  author     String   @default("")
+  score      Int      @default(0)
+  comments   Int      @default(0)
+  viralScore Int      @default(0)
+  suggestedMode String @default("reddit-story")
+  capturedAt DateTime @default(now())
+  usedCount  Int      @default(0)
+}
+
+model Asset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  kind        String // image | audio | video | music | font
+  path        String
+  bytes       Int      @default(0)
+  metaJson    String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind])
+}
+
+// ------------------------------------------------------------------ billing
+
+model CreditEntry {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  delta        Int
+  reason       String
+  videoId      String?
+  balanceAfter Int
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+// Lets a workspace supply its own provider credentials from the UI later,
+// without any code change: the registry reads these before env vars.
+model ProviderSetting {
+  id          String   @id @default(cuid())
+  workspaceId String
+  kind        String // llm | tts | image | music | social
+  provider    String
+  configJson  String   @default("{}")
+  enabled     Boolean  @default(false)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, kind])
+}
