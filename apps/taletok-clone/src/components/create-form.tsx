@@ -37,6 +37,7 @@ export function CreateForm({
   const [duration, setDuration] = useState(mode.defaultDurationSec);
   const [voiceId, setVoiceId] = useState(voices[0]?.id ?? '');
   const [visualOutput, setVisualOutput] = useState<'auto' | 'image' | 'video'>('auto');
+  const [renderer, setRenderer] = useState<'auto' | 'fast' | 'blender'>('auto');
   const [options, setOptions] = useState<Record<string, string | number | boolean>>(() =>
     Object.fromEntries(mode.options.map((o) => [o.key, o.default])),
   );
@@ -63,6 +64,7 @@ export function CreateForm({
           topic,
           aspect,
           visualOutput,
+          renderer,
           durationSec: duration,
           voiceId: voiceId || undefined,
           sourceType,
@@ -270,6 +272,29 @@ export function CreateForm({
             <p className="mt-1.5 text-xs text-slate-500">
               Clips take longer to generate than stills.
             </p>
+          </div>
+
+          <div>
+            <label className="label">Render quality</label>
+            <div className="space-y-1.5">
+              {([
+                { value: 'auto', label: 'Fast — seconds per scene', help: 'In-process renderer. Good for drafts.' },
+                { value: 'blender', label: 'High — path traced', help: 'Real shadows, depth of field and materials. Minutes per scene.' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value} type="button"
+                  onClick={() => setRenderer(opt.value === 'auto' ? 'auto' : 'blender')}
+                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                    (renderer === 'blender') === (opt.value === 'blender')
+                      ? 'border-brand-500 bg-brand-500/10 text-brand-400'
+                      : 'border-white/10 text-slate-400 hover:border-white/25'
+                  }`}
+                >
+                  <div className="text-xs font-medium">{opt.label}</div>
+                  <div className="mt-0.5 text-xs opacity-70">{opt.help}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

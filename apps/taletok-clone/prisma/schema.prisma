@@ -147,6 +147,8 @@ model Video {
   aspect      String   @default("9:16") // 9:16 | 1:1 | 16:9
   // auto = follow the mode default; image/video force stills or motion clips.
   visualOutput String  @default("auto") // auto | image | video
+  // fast = in-process rasterizer (seconds); blender = path traced (minutes).
+  renderer     String  @default("auto") // auto | fast | blender
   targetDurationSec Int @default(45)
   actualDurationMs  Int @default(0)
   script      String   @default("")

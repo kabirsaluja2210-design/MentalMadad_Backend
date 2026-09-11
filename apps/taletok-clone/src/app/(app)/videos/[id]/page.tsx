@@ -38,6 +38,7 @@ export default async function VideoPage({ params }: { params: { id: string } }) 
         status: video.status,
         aspect: video.aspect,
         visualOutput: video.visualOutput,
+        renderer: video.renderer,
         mode: video.mode,
         topic: video.topic,
         hook: video.hook,

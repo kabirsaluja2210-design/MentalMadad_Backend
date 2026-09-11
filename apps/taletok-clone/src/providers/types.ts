@@ -142,6 +142,8 @@ export interface VideoRequest {
   style?: string;
   /** How long the scene needs. Providers may return a shorter loopable clip. */
   durationMs: number;
+  /** Renderer preference: 'fast' | 'blender'. Ignored by hosted providers. */
+  renderer?: string;
   outPath: string;
 }
 

@@ -16,7 +16,7 @@ interface Post {
   handle: string; postedUrl: string | null; error: string | null;
 }
 interface VideoData {
-  id: string; title: string; status: string; aspect: string; visualOutput: string;
+  id: string; title: string; status: string; aspect: string; visualOutput: string; renderer: string;
   mode: string; topic: string;
   hook: string; cta: string; script: string; voiceId: string | null; actualDurationMs: number;
   outputUrl: string | null; thumbnailUrl: string | null;
@@ -194,6 +194,22 @@ export function VideoEditor({
               </select>
               <p className="mt-1 text-xs text-slate-500">
                 Takes effect on the next render.
+              </p>
+            </div>
+            <div>
+              <label className="label" htmlFor="renderer">Render quality</label>
+              <select
+                id="renderer" className="field" defaultValue={video.renderer}
+                onChange={(e) => act('renderer', () =>
+                  api(`/api/videos/${video.id}`, {
+                    method: 'PATCH', body: JSON.stringify({ renderer: e.target.value }),
+                  }))}
+              >
+                <option value="auto">Fast — seconds per scene</option>
+                <option value="blender">High — path traced, minutes per scene</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                High quality uses Blender for real shadows and depth of field.
               </p>
             </div>
             <div>

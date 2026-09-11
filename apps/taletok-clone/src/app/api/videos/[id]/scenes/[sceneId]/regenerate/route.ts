@@ -86,12 +86,13 @@ export async function POST(
       const seed = hashString(`${scene.id}:${visualPrompt}:${Date.now()}`);
 
       if (wantsVideo) {
-        const result = await getVideo().generate({
+        const result = await getVideo(video.renderer).generate({
           prompt: visualPrompt || text,
           aspect: video.aspect,
           seed,
           style: mode.visualStyle,
           durationMs,
+          renderer: video.renderer,
           outPath: `${workDir}/scene-${scene.index}.mp4`,
         });
         clipPath = result.clipPath;

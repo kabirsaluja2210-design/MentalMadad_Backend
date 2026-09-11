@@ -150,7 +150,7 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
     (video.visualOutput === 'auto' && mode.visualOutput === 'video');
 
   const image = getImage();
-  const clipper = getVideo();
+  const clipper = getVideo(video.renderer);
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
@@ -173,6 +173,7 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
         seed,
         style: mode.visualStyle,
         durationMs: scene.durationMs,
+        renderer: video.renderer,
         outPath: `${workDir}/scene-${scene.index}.mp4`,
       });
       scenes[i] = await db.scene.update({

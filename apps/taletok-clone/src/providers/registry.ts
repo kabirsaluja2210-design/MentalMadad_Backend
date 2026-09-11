@@ -11,6 +11,7 @@ import { stubVideo } from './video/stub';
 import { cartoon3dVideo } from './video/cartoon3d';
 import { proceduralVideo } from './video/procedural';
 import { lumaVideo, replicateVideo } from './video/hosted';
+import { blenderVideo } from './video/blender';
 import { stubMusic } from './music/stub';
 import { SOCIAL_PLATFORMS, socialProviders } from './social';
 
@@ -50,8 +51,21 @@ export function getImage(): ImageProvider {
   return pick(process.env.IMAGE_PROVIDER, [openaiImage, replicateImage], stubImage);
 }
 
-export function getVideo(): VideoProvider {
-  return pick(process.env.VIDEO_PROVIDER, [replicateVideo, lumaVideo], proceduralVideo);
+/**
+ * Video renderer selection.
+ *
+ * A configured hosted model always wins -- if someone has paid for one, that is
+ * what they want used. Otherwise the per-video preference chooses between the
+ * in-process rasterizer (seconds per clip) and Blender (minutes per clip).
+ * 'auto' means fast, so nobody is surprised by a twenty-minute render they did
+ * not ask for; set VIDEO_RENDERER=blender to flip that default.
+ */
+export function getVideo(renderer = 'auto'): VideoProvider {
+  const hosted = pick(process.env.VIDEO_PROVIDER, [replicateVideo, lumaVideo], proceduralVideo);
+  if (hosted !== proceduralVideo) return hosted;
+
+  const preference = renderer === 'auto' ? (process.env.VIDEO_RENDERER || 'fast') : renderer;
+  return preference === 'blender' ? blenderVideo : proceduralVideo;
 }
 
 export function getMusic(): MusicProvider {
@@ -70,7 +84,7 @@ export function providerStatus(): ProviderStatus[] {
     { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, anthropicLlm.info, openaiLlm.info] },
     { kind: 'tts', active: getTts().info, alternatives: [stubTts.info, elevenLabsTts.info, openaiTts.info] },
     { kind: 'image', active: getImage().info, alternatives: [stubImage.info, openaiImage.info, replicateImage.info] },
-    { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },
+    { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, blenderVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },
     { kind: 'music', active: getMusic().info, alternatives: [stubMusic.info] },
     {
       kind: 'social',

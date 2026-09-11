@@ -23,6 +23,7 @@ burn-in, AAC audio, `+faststart` MP4s.
 | Voiceover track + word timings | **Placeholder** — correct-length silent WAV |
 | Per-scene visuals — **generated motion clips** or stills | Procedural, but real animated MP4s |
 | **3D cel-shaded animation** — software renderer, no GPU or API | Working (real 3D) |
+| **Path-traced 3D via Blender** — real shadows, DOF, materials | Working (free, local, no key) |
 | **Full 60s stories/documentaries** with a scaling narrative arc | Working |
 | ffmpeg composition, camera motion, caption burn-in, watermark | Working (real) |
 | Quick editor + Advanced per-scene editor | Working |
@@ -132,6 +133,32 @@ a moral.
 Formats declare the caption treatment they were designed with. A workspace brand
 kit can override it, but only when a style is explicitly chosen: `auto` (the
 default) means each format keeps its own.
+
+### Two renderers
+
+Scene clips can be produced by either of two local renderers. Neither needs an
+API key.
+
+| | Fast (built-in) | High (Blender) |
+|---|---|---|
+| Engine | Software rasterizer written from scratch | Blender Cycles, path traced |
+| Lighting | Cel or smooth shading, no shadows | Soft shadows, ambient occlusion, bounce |
+| Optics | None | Depth of field, real metallic/roughness |
+| Cost | **~1.5s** per clip | **~2min** per clip |
+
+`auto` means fast, so nobody waits twenty minutes for a render they did not ask
+for; set `VIDEO_RENDERER=blender` to flip that default, or choose per video at
+creation or in the editor. A configured hosted model still overrides both.
+
+Blender is invoked headless and builds its scenes procedurally from a JSON spec
+(`src/providers/video/blender/build_scene.py`) — same archetypes, same original
+geometry, no model files. Any failure falls back to the fast renderer rather
+than killing the job. Install with `apt install blender` (or `brew install
+--cask blender`); set `BLENDER_PATH` if it is not on `PATH`. Tune with
+`BLENDER_SAMPLES`, `BLENDER_SCALE`, `BLENDER_FPS`, `BLENDER_CLIP_SECONDS`.
+
+Note that distribution builds of Blender are often compiled without
+OpenImageDenoise; the script probes for it and falls back to raw sampling.
 
 ### Writing a full minute
 
@@ -283,8 +310,9 @@ handful of bands, specular response, and subject-led scene routing.
 ## Known gaps
 
 - Voiceover audio is silent until a TTS key is supplied.
-- 3D sets are procedural and abstract — stylised geometry, not photographic
-  footage. A hosted video model replaces them when one is configured.
+- 3D sets are procedural — stylised original geometry, not photographic
+  footage. Blender raises the lighting and material quality substantially but
+  does not change that; a hosted video model is the only route to realism.
 - Platform uploads are not implemented (see **Publishing** above).
 - No payment processor — switching plans grants credits directly.
 - Music library is metadata-only; no audio ships with the repo. Drop files in

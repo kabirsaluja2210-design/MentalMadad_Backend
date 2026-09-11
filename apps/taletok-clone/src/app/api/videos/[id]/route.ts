@@ -14,6 +14,7 @@ const patchSchema = z.object({
   voiceId: z.string().nullable().optional(),
   aspect: z.enum(['9:16', '1:1', '16:9']).optional(),
   visualOutput: z.enum(['auto', 'image', 'video']).optional(),
+  renderer: z.enum(['auto', 'fast', 'blender']).optional(),
   options: z.record(z.unknown()).optional(),
 });
 
@@ -79,6 +80,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         ...(body.voiceId !== undefined ? { voiceId: body.voiceId } : {}),
         ...(body.aspect !== undefined ? { aspect: body.aspect } : {}),
         ...(body.visualOutput !== undefined ? { visualOutput: body.visualOutput } : {}),
+        ...(body.renderer !== undefined ? { renderer: body.renderer } : {}),
         ...(body.options !== undefined ? { optionsJson: JSON.stringify(body.options) } : {}),
       },
     });
