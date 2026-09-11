@@ -148,6 +148,241 @@ def setup_sun(angle_deg, elevation_deg, energy):
     return sun
 
 
+
+# ------------------------------------------------------- lofted bodywork
+
+def loft(stations, name, materials, crease_bottom=True, face_material=None):
+    """
+    Builds a closed mesh by bridging cross-sections along X.
+
+    Each station is (x, half_width, deck_z, roof_z). The cross-section is a
+    twelve-point loop: up one flank to the centreline and back down the other.
+    Every station carries the same point count, so consecutive stations bridge
+    into quads without any triangulation.
+
+    This is how the body gets curvature. Stacking bevelled boxes can only ever
+    produce stacked bevelled boxes; a lofted surface under a subdivision
+    modifier produces an actual shoulder line and roof fall-away.
+    """
+    verts = []
+    faces = []
+    ring = 12
+
+    for (x, w, deck, roof) in stations:
+        half = [
+            (0.0, 0.0),
+            (w * 0.92, 0.0),
+            (w, deck * 0.34),
+            (w, deck * 0.82),
+            (w * 0.95, deck),
+            (w * 0.60, roof),
+            (0.0, roof),
+        ]
+        # Up the +Y flank, across the centreline, back down the -Y flank.
+        loop = [(x, y, z) for (y, z) in half]
+        loop += [(x, -y, z) for (y, z) in reversed(half[1:-1])]
+        verts.extend(loop)
+
+    stations_count = len(stations)
+    for s in range(stations_count - 1):
+        a = s * ring
+        b = (s + 1) * ring
+        for i in range(ring):
+            j = (i + 1) % ring
+            faces.append((a + i, a + j, b + j, b + i))
+
+    # Flat caps at each end, fanned from the first vertex of the ring.
+    first = list(range(ring))
+    last = [(stations_count - 1) * ring + i for i in range(ring)]
+    faces.append(tuple(reversed(first)))
+    faces.append(tuple(last))
+
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.validate()
+    mesh.update()
+
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+
+    for mat in (materials if isinstance(materials, (list, tuple)) else [materials]):
+        obj.data.materials.append(mat)
+
+    # Glazing is assigned per face rather than modelled as separate panels:
+    # separate panels sit proud of a curved body and read as floating slabs,
+    # whereas a material slot follows the surface exactly.
+    if face_material is not None:
+        for poly in mesh.polygons:
+            centre = poly.center
+            poly.material_index = face_material(centre.x, centre.y, centre.z)
+
+    # Crease the lowest ring so subdivision does not round the sill away.
+    if crease_bottom:
+        def is_bottom(edge):
+            za = obj.data.vertices[edge.vertices[0]].co.z
+            zb = obj.data.vertices[edge.vertices[1]].co.z
+            return abs(za) < 1e-4 and abs(zb) < 1e-4
+
+        set_edge_creases(obj, is_bottom, 0.9)
+
+    mod = obj.modifiers.new("Subsurf", "SUBSURF")
+    mod.levels = 1
+    mod.render_levels = 2
+    mod.use_limit_surface = False
+
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    obj.data.use_auto_smooth = True
+    obj.data.auto_smooth_angle = math.radians(50)
+    return obj
+
+
+def set_edge_creases(obj, predicate, value=0.9):
+    """
+    Creases the edges matching `predicate`.
+
+    Blender 4.0 moved edge crease off MeshEdge and into a generic "crease_edge"
+    attribute, so writing edge.crease raises AttributeError there. Try the
+    attribute first and fall back to the old property.
+    """
+    mesh = obj.data
+    layer = mesh.attributes.get("crease_edge")
+    if layer is None:
+        try:
+            layer = mesh.attributes.new("crease_edge", "FLOAT", "EDGE")
+        except (RuntimeError, TypeError):
+            layer = None
+
+    if layer is not None:
+        for index, edge in enumerate(mesh.edges):
+            if predicate(edge):
+                layer.data[index].value = value
+        return
+
+    for edge in mesh.edges:
+        if predicate(edge):
+            edge.crease = value
+
+
+def boolean_cut(target, cutter):
+    """Subtracts `cutter` from `target`, then removes the cutter object."""
+    mod = target.modifiers.new("Cut", "BOOLEAN")
+    mod.operation = "DIFFERENCE"
+    mod.object = cutter
+    mod.solver = "FAST"
+    cutter.hide_render = True
+    cutter.hide_viewport = True
+    return mod
+
+
+def wheel_arch_cutter(location, radius, width):
+    """A cylinder used to carve a wheel well out of the bodyside."""
+    bpy.ops.mesh.primitive_cylinder_add(
+        radius=radius, depth=width, location=location,
+        rotation=(math.radians(90), 0, 0), vertices=24,
+    )
+    return bpy.context.active_object
+
+
+# --------------------------------------------------------- panel materials
+
+def _band(tree, value_socket, position, width):
+    """Returns a 0..1 factor that peaks in a narrow band around `position`."""
+    offset = tree.nodes.new("ShaderNodeMath")
+    offset.operation = "SUBTRACT"
+    offset.inputs[1].default_value = position
+    tree.links.new(value_socket, offset.inputs[0])
+
+    absolute = tree.nodes.new("ShaderNodeMath")
+    absolute.operation = "ABSOLUTE"
+    tree.links.new(offset.outputs[0], absolute.inputs[0])
+
+    ramp = tree.nodes.new("ShaderNodeMapRange")
+    ramp.inputs["From Min"].default_value = 0.0
+    ramp.inputs["From Max"].default_value = width
+    ramp.inputs["To Min"].default_value = 1.0
+    ramp.inputs["To Max"].default_value = 0.0
+    ramp.clamp = True
+    tree.links.new(absolute.outputs[0], ramp.inputs["Value"])
+    return ramp.outputs[0]
+
+
+def make_panelled_material(name, color, panel_positions, roughness=0.26, metallic=0.45):
+    """
+    Body paint with shut lines.
+
+    The lines are shaded rather than modelled: thin bands in object space that
+    darken the base colour and raise roughness. Modelling every panel gap would
+    multiply the geometry for detail that only ever reads as a dark line.
+    """
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+
+    coord = tree.nodes.new("ShaderNodeTexCoord")
+    separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(coord.outputs["Object"], separate.inputs["Vector"])
+
+    combined = None
+    for position in panel_positions:
+        band = _band(tree, separate.outputs["X"], position, 0.035)
+        if combined is None:
+            combined = band
+        else:
+            maximum = tree.nodes.new("ShaderNodeMath")
+            maximum.operation = "MAXIMUM"
+            tree.links.new(combined, maximum.inputs[0])
+            tree.links.new(band, maximum.inputs[1])
+            combined = maximum.outputs[0]
+
+    base = tree.nodes.new("ShaderNodeMixRGB")
+    base.blend_type = "MIX"
+    base.inputs["Color1"].default_value = (*color, 1.0)
+    # Shut lines read as shadow, not as a different paint colour.
+    base.inputs["Color2"].default_value = (color[0] * 0.18, color[1] * 0.18, color[2] * 0.18, 1.0)
+    if combined is not None:
+        tree.links.new(combined, base.inputs["Fac"])
+    tree.links.new(base.outputs["Color"], bsdf.inputs["Base Color"])
+
+    rough = tree.nodes.new("ShaderNodeMapRange")
+    rough.inputs["To Min"].default_value = roughness
+    rough.inputs["To Max"].default_value = min(1.0, roughness + 0.45)
+    if combined is not None:
+        tree.links.new(combined, rough.inputs["Value"])
+    tree.links.new(rough.outputs[0], bsdf.inputs["Roughness"])
+
+    bsdf.inputs["Metallic"].default_value = metallic
+    if "Coat Weight" in bsdf.inputs:
+        bsdf.inputs["Coat Weight"].default_value = 0.4
+    return mat
+
+
+def make_asphalt_material(color):
+    """Road surface with noise-driven roughness and a fine bump."""
+    mat = bpy.data.materials.new("Asphalt")
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*color, 1.0)
+
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 260.0
+    noise.inputs["Detail"].default_value = 6.0
+
+    rough = tree.nodes.new("ShaderNodeMapRange")
+    rough.inputs["To Min"].default_value = 0.62
+    rough.inputs["To Max"].default_value = 0.95
+    tree.links.new(noise.outputs["Fac"], rough.inputs["Value"])
+    tree.links.new(rough.outputs[0], bsdf.inputs["Roughness"])
+
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.12
+    tree.links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    tree.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return mat
+
+
 # --------------------------------------------------------------------- sets
 
 def build_ground(size, color, roughness=0.9, subdivide=0):
@@ -163,44 +398,78 @@ def build_ground(size, color, roughness=0.9, subdivide=0):
 
 def build_vehicle(palette):
     """
-    A generic road vehicle: a bevelled lower body, a set-back cabin with glass,
-    wheel arches cut into the sides, and wheels with rims. An archetype -- no
-    marque, badge or model-specific shaping.
+    A generic road vehicle built as a lofted surface.
+
+    Cross-sections along the length describe a bonnet, a greenhouse and a boot;
+    subdivision turns them into a continuous body with a real shoulder line.
+    Wheel arches are cut with booleans so the wheels sit inside the bodyside
+    rather than protruding from a slab, and the paint carries shaded shut lines.
+
+    An archetype only -- no marque, badge, grille pattern or model-specific
+    shaping.
     """
-    body_mat = make_material("Body", palette["primary"], roughness=0.24, metallic=0.4)
-    glass_mat = make_material("Glass", (0.05, 0.07, 0.1), roughness=0.06, metallic=0.2)
-    tyre_mat = make_material("Tyre", (0.03, 0.03, 0.035), roughness=0.88)
-    rim_mat = make_material("Rim", (0.58, 0.6, 0.63), roughness=0.22, metallic=0.95)
-    lamp_mat = make_material("Lamp", (0.95, 0.93, 0.82), roughness=0.12)
-    trim_mat = make_material("Trim", (0.1, 0.1, 0.12), roughness=0.6)
+    body_mat = make_panelled_material(
+        "Body", palette["primary"], panel_positions=(-1.02, 0.22, 1.30, -1.74),
+    )
+    glass_mat = make_material("Glass", (0.03, 0.04, 0.055), roughness=0.05, metallic=0.25)
+    tyre_mat = make_material("Tyre", (0.028, 0.028, 0.032), roughness=0.9)
+    rim_mat = make_material("Rim", (0.6, 0.62, 0.65), roughness=0.2, metallic=0.95)
+    lamp_mat = make_material("Lamp", (0.95, 0.93, 0.84), roughness=0.08)
+    trim_mat = make_material("Trim", (0.055, 0.055, 0.065), roughness=0.55)
 
-    objects = []
-    # Overlapping masses, not stacked slabs: each piece intersects the one
-    # below so the silhouette reads as a single body.
-    objects.append(cube((4.6, 1.86, 0.72), (0, 0, 0.86), body_mat, bevel=0.1))
-    objects.append(cube((3.9, 1.9, 0.5), (-0.1, 0, 1.22), body_mat, bevel=0.1))
-    # Cabin sunk into the upper body rather than floating on it.
-    # The roof must be no wider than the glass below it, or it overhangs and
-    # the cabin reads as a tray sitting on the car rather than part of it.
-    objects.append(cube((2.1, 1.7, 0.62), (-0.3, 0, 1.46), glass_mat, bevel=0.05))
-    objects.append(cube((1.98, 1.6, 0.22), (-0.3, 0, 1.72), body_mat, bevel=0.08))
-    # Pillars tie the roof down to the shoulder line.
-    for sx, sy in ((0.95, 0.82), (0.95, -0.82), (-1.28, 0.82), (-1.28, -0.82)):
-        objects.append(cube((0.16, 0.1, 0.62), (-0.3 + sx, sy, 1.46), body_mat, bevel=0.02))
-    # Sill and bumpers.
-    objects.append(cube((4.3, 1.94, 0.18), (0, 0, 0.52), trim_mat, bevel=0.04))
+    # (x, half width, deck height, roof height). Roof equals deck wherever
+    # there is no cabin, which flattens the section into a bonnet or boot.
+    # The end stations taper gently: a hard drop at the last station lofts into
+    # a flat wedge that reads as a snowplough rather than a nose.
+    stations = [
+        (-2.34, 0.80, 0.70, 0.70),
+        (-2.18, 0.90, 0.84, 0.84),
+        (-1.70, 0.95, 0.90, 0.90),
+        (-1.20, 0.96, 0.93, 1.44),
+        (-0.60, 0.97, 0.94, 1.66),
+        (0.16, 0.97, 0.94, 1.68),
+        (0.76, 0.96, 0.93, 1.48),
+        (1.30, 0.95, 0.90, 0.90),
+        (1.94, 0.92, 0.86, 0.86),
+        (2.28, 0.84, 0.78, 0.78),
+        (2.42, 0.74, 0.68, 0.68),
+    ]
+
+    def face_material(x, y, z):
+        """Slot 1 is glass: the greenhouse sides and the two screens."""
+        if z < 1.02:
+            return 0
+        in_cabin = -1.24 < x < 0.82
+        # Flanks of the cabin, plus the raked screens at either end.
+        if in_cabin and abs(y) > 0.55:
+            return 1
+        if in_cabin and z < 1.55 and (x < -1.02 or x > 0.6):
+            return 1
+        return 0
+
+    body = loft(stations, "Body", [body_mat, glass_mat], face_material=face_material)
+
+    for x in (1.48, -1.48):
+        cutter = wheel_arch_cutter((x, 0, 0.46), 0.63, 2.4)
+        boolean_cut(body, cutter)
+
+    objects = [body]
+
+    # Sill, bumpers and lamps.
+    objects.append(cube((3.7, 1.96, 0.12), (0, 0, 0.22), trim_mat, bevel=0.03))
     for sx in (1, -1):
-        objects.append(cube((0.22, 1.8, 0.3), (sx * 2.22, 0, 0.72), trim_mat, bevel=0.05))
-        objects.append(cube((0.1, 0.46, 0.16), (sx * 2.3, 0.58, 0.98), lamp_mat, bevel=0.02))
-        objects.append(cube((0.1, 0.46, 0.16), (sx * 2.3, -0.58, 0.98), lamp_mat, bevel=0.02))
+        objects.append(cube((0.22, 1.78, 0.24), (sx * 2.24, 0, 0.58), trim_mat, bevel=0.06))
+        for sy in (0.54, -0.54):
+            objects.append(cube((0.1, 0.44, 0.16), (sx * 2.3, sy, 0.82), lamp_mat, bevel=0.03))
 
-    # Wheels tucked just inside the body width so they do not splay outward.
-    for x in (1.45, -1.45):
-        for y in (0.82, -0.82):
-            objects.append(cylinder(0.46, 0.26, (x, y, 0.46), tyre_mat,
-                                    rotation=(math.radians(90), 0, 0), verts=48, bevel=0.03))
-            objects.append(cylinder(0.25, 0.28, (x, y, 0.46), rim_mat,
+    for x in (1.48, -1.48):
+        for y in (0.8, -0.8):
+            objects.append(cylinder(0.47, 0.28, (x, y, 0.47), tyre_mat,
+                                    rotation=(math.radians(90), 0, 0), verts=48, bevel=0.035))
+            objects.append(cylinder(0.27, 0.3, (x, y, 0.47), rim_mat,
                                     rotation=(math.radians(90), 0, 0), verts=28, bevel=0.012))
+            objects.append(cylinder(0.1, 0.32, (x, y, 0.47), trim_mat,
+                                    rotation=(math.radians(90), 0, 0), verts=16, bevel=0.008))
     return objects
 
 
@@ -417,7 +686,9 @@ def main():
 
     kind = spec["kind"]
     if kind == "vehicle":
-        build_ground(200, palette["ground"], roughness=0.75)
+        road = build_ground(200, palette["ground"], roughness=0.75)
+        road.data.materials.clear()
+        road.data.materials.append(make_asphalt_material(tuple(palette["ground"])))
         # Lane markings and a barrier give the shot depth cues.
         # The road runs along X, matching the vehicle's length.
         line_mat = make_material("Line", (0.78, 0.78, 0.76), roughness=0.6)
