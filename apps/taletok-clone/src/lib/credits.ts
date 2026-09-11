@@ -4,6 +4,7 @@ import { db } from './db';
 export const MODE_CREDIT_RATE: Record<string, number> = {
   'reddit-story': 0.2,
   'cinematic-short': 0.35,
+  'short-documentary': 0.3,
   'ai-short': 0.2,
   timelapse: 0.25,
   'long-form-story': 0.12,

@@ -96,7 +96,19 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
       },
     });
 
-    scenes = await createScenesFromBeats(video.id, script.beats, mode.secondsPerBeat, mode.motions);
+    // The hook is the opening line of narration, not just metadata. Several
+    // planners return it separately from the beats, which meant it was stored
+    // on the video and then never voiced -- the video began mid-thought.
+    const beats = script.beats.slice();
+    if (script.hook.trim() && beats[0]?.text.trim() !== script.hook.trim()) {
+      beats.unshift({
+        text: script.hook,
+        visualPrompt: `${video.topic || video.title} — opening hook`,
+        motion: mode.motions[0],
+      });
+    }
+
+    scenes = await createScenesFromBeats(video.id, beats, mode.secondsPerBeat, mode.motions);
   }
   await onProgress('script', progressAt('script', 1), `${scenes.length} scenes planned`);
 

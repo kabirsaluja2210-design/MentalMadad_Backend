@@ -4,6 +4,8 @@ import {
   chunkIntoBeats, countWords, splitSentences, titleCase, topicPhrase, trimTo, wordsForDuration,
 } from './text';
 import { seededRandom, hashString } from '@/lib/media-encode';
+import { arcTitle, buildArc, type Register } from './narrative';
+import { estimateTiming } from '@/providers/tts/timing';
 
 /**
  * Offline beat planners — one per video mode.
@@ -113,40 +115,65 @@ function buildStoryBody(topic: string, budget: number): string {
   return out.join(' ');
 }
 
-const cinematicShort: Planner = ({ req, options, wordBudget }) => {
-  const mode = getMode('cinematic-short');
-  const phrase = topicPhrase(req.topic);
-  const pace = (options.narrationPace as 'slow' | 'normal' | 'fast') || 'slow';
+/**
+ * Builds an arc-driven planner.
+ *
+ * The beat count is fitted to the *measured* narration length rather than
+ * assumed from a words-per-minute constant: the speech timing model and the
+ * planner disagreed by about 15%, which compounded with length and left a
+ * 120-second request at 82% of its target. Measuring and correcting keeps
+ * every duration within a few percent.
+ */
+function arcPlanner(modeId: string, defaultRegister: Register): Planner {
+  return ({ req, options }) => {
+    const mode = getMode(modeId);
+    const register = (options.register as Register) || defaultRegister;
+    const pace =
+      options.narrationPace === 'slow' ? 0.92 : options.narrationPace === 'fast' ? 1.15 : 1;
+    const targetMs = req.targetDurationSec * 1000;
+    const seed = hashString(`${modeId}:${req.topic}`);
 
-  const lines = [
-    `Imagine ${phrase}.`,
-    `It does not happen all at once.`,
-    `The first change is small enough that nobody reacts.`,
-    `Within hours, the scale of it becomes impossible to ignore.`,
-    `Everything built around the old assumption begins to fail.`,
-    `What comes next depends entirely on how quickly anyone noticed.`,
-    `And by then, the window to act has already closed.`,
-    `This is not a prediction. It is a description of the mechanism.`,
-  ];
+    let beatCount = Math.max(4, Math.round(req.targetDurationSec / mode.secondsPerBeat));
+    let arc = buildArc(req.topic, beatCount, register, seed);
 
-  const beats: ScriptBeat[] = [];
-  let words = 0;
-  for (let i = 0; i < lines.length && words < wordBudget; i++) {
-    beats.push({
-      text: lines[i],
-      visualPrompt: visualFor(req.topic, lines[i], mode.visualStyle, i),
+    // Converge on the requested length; a handful of passes is plenty.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const spokenMs = estimateTiming(arc.map((b) => b.text).join(' '), pace).durationMs;
+      if (Math.abs(spokenMs - targetMs) / targetMs < 0.04) break;
+
+      const scaled = Math.round(beatCount * (targetMs / Math.max(1, spokenMs)));
+      // Move at least one beat, or a stable-but-wrong count would never budge.
+      const next = scaled === beatCount ? beatCount + (spokenMs < targetMs ? 1 : -1) : scaled;
+      const clamped = Math.max(4, Math.min(120, next));
+      if (clamped === beatCount) break;
+
+      beatCount = clamped;
+      arc = buildArc(req.topic, beatCount, register, seed);
+    }
+
+    const phrase = topicPhrase(req.topic);
+    const beats: ScriptBeat[] = arc.map((beat, i) => ({
+      text: beat.text,
+      // The visual prompt carries the topic plus the beat's narrative role, so
+      // the 3D scene picker has something concrete to match on.
+      visualPrompt: `${phrase} — ${beat.function} beat: ${trimTo(beat.text, 12)}`,
       motion: mode.motions[i % mode.motions.length],
-    });
-    words += countWords(lines[i]);
-  }
+    }));
 
-  return {
-    beats,
-    hook: `What if ${phrase}?`,
-    cta: 'Follow for the next one.',
-    title: titleCase(`What if ${trimTo(phrase, 8)}`),
+    return {
+      // The hook stays in the beat list: it is metadata *and* the opening line
+      // of narration. Slicing it out left the video silently missing the most
+      // important sentence in it, and running a beat short of its target.
+      beats,
+      hook: beats[0].text,
+      cta: register === 'documentary' ? 'Follow for the next one.' : 'Part two soon.',
+      title: arcTitle(req.topic, register),
+    };
   };
-};
+}
+
+const shortDocumentary = arcPlanner('short-documentary', 'documentary');
+const cinematicShort = arcPlanner('cinematic-short', 'documentary');
 
 const aiShort: Planner = ({ req, options, wordBudget }) => {
   const mode = getMode('ai-short');
@@ -404,6 +431,7 @@ const motivational: Planner = ({ req, options, wordBudget }) => {
 const PLANNERS: Record<string, Planner> = {
   'reddit-story': redditStory,
   'cinematic-short': cinematicShort,
+  'short-documentary': shortDocumentary,
   'ai-short': aiShort,
   timelapse,
   'long-form-story': longFormStory,

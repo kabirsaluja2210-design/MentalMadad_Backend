@@ -58,6 +58,7 @@ export function paletteFor(seed: number, style: string): RgbPixel[] {
     'chat-thread': 12,
     typography: 200,
     'background-loop': 90,
+    'cartoon-3d': 150,
   };
   const spread = spreadByStyle[style] ?? 100;
 
@@ -182,6 +183,8 @@ const backgroundLoop: Painter = ({ x, y, w, h, t, palette }) => {
 
 const PAINTERS: Record<string, Painter> = {
   'cinematic-3d': cinematic,
+  // Forcing stills on a 3D format falls back to the illustrated look.
+  'cartoon-3d': illustrated,
   illustrated,
   'timelapse-frames': timelapseFrames,
   'graphic-card': graphicCard,

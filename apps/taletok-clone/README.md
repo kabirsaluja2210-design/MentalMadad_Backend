@@ -21,7 +21,9 @@ burn-in, AAC audio, `+faststart` MP4s.
 | 9 video formats, each with its own pacing/visuals/captions | Working |
 | Script generation, scene breakdown, word-level caption timing | Working (offline template engine) |
 | Voiceover track + word timings | **Placeholder** — correct-length silent WAV |
-| Per-scene visuals — **generated motion clips** or stills | **Placeholder** — procedural, but real animated MP4s |
+| Per-scene visuals — **generated motion clips** or stills | Procedural, but real animated MP4s |
+| **3D cel-shaded animation** — software renderer, no GPU or API | Working (real 3D) |
+| **Full 60s stories/documentaries** with a scaling narrative arc | Working |
 | ffmpeg composition, camera motion, caption burn-in, watermark | Working (real) |
 | Quick editor + Advanced per-scene editor | Working |
 | Render queue, retries, progress, credit refund on failure | Working |
@@ -52,12 +54,13 @@ or set `FFMPEG_PATH`. Settings will tell you if it is missing.
 
 ---
 
-## The nine formats
+## The ten formats
 
 | Format | What it makes |
 |---|---|
 | **Reddit Story** | Forum story narrated over a moving background, karaoke captions |
-| **Cinematic Short** | Slow dramatic voiceover, one striking frame per beat |
+| **Short Documentary** | A full 60s piece with a real arc, animated in 3D cel shading |
+| **Cinematic Short** | Slow dramatic voiceover, animated in 3D cel shading |
 | **AI Short** | General-purpose: any topic (or your own script) into a short |
 | **Timelapse** | A progression across eras with interpolated era labels |
 | **Long-form Story** | Up to 10 minutes, chaptered, 16:9 by default |
@@ -84,6 +87,43 @@ fill a long scene instead of regenerating every second of it. Frames are
 generated below playback resolution and rate, then scaled and interpolated up by
 ffmpeg — abstract gradients upscale well, and generating 30fps of procedural
 pixels in JS would be far too slow.
+
+### 3D cartoon animation
+
+Two formats (**Short Documentary** and **Cinematic Short**) render their scenes
+with a **software 3D renderer written from scratch** — no GPU, no WebGL, no API
+key, no model files. It is real geometry, not a filter over a still:
+
+- a perspective camera with **near-plane clipping**, and a half-space triangle
+  rasterizer with a z-buffer and perspective-correct normal interpolation;
+- **cel shading** — lighting is snapped to four flat bands rather than a smooth
+  ramp, which is what gives the cartoon look;
+- **cartoon outlines**, drawn as a post-pass wherever the frame is
+  discontinuous in object id, depth, or normal (a crease), and faded out past a
+  distance so the horizon is not inked;
+- seven procedural **sets** — hills, city, peaks, forest, coast, interior,
+  crowd — chosen by keyword-matching the beat's visual prompt, with distance
+  fog and per-archetype palettes;
+- animated cameras and figures, on cycles that close over the clip so it loops.
+
+Every mesh is generated from parameters (`mesh.ts`) and every figure is a
+**generic original form** — a capsule torso, a sphere head, simple limbs. There
+are no model assets in the repo and nothing is traced from existing artwork.
+
+A 4-second 1080x1920 clip takes roughly 1.5s to render; a full 60-second
+documentary renders end to end in under a minute.
+
+### Writing a full minute
+
+Formats that tell a story build a **narrative arc** sized to the request:
+hook → premise → context → development → turn → consequence → resolution →
+close. Extra length goes into *development*, where a story actually expands,
+rather than padding the ending.
+
+Beat count is then fitted against the **measured** narration length, not a
+words-per-minute constant, and converges within a few percent — so a 60-second
+documentary really is about 60 seconds. Two registers are available:
+documentary (explanatory, third person) and story (first person, scene-driven).
 
 A format is a recipe, not a prompt: each one sets beat length, visual style,
 visual output kind, caption treatment, camera-move pool, music mood and its own
@@ -206,17 +246,23 @@ npm run build
 ```
 
 Covered: speech timing and caption grouping, ASS generation (including that
-caption text cannot inject override tags), the mode catalog and all nine beat
-planners, credit maths, schedule advancement, the PNG/WAV encoders, and the
-procedural painters — that every style animates across a full cycle, loops
-without a seam, stays in gamut and yields even dimensions for H.264.
+caption text cannot inject override tags), the mode catalog and every beat
+planner, credit maths, schedule advancement, the PNG/WAV encoders, the
+procedural painters (every style animates across a full cycle, loops without a
+seam, stays in gamut, yields even dimensions for H.264), the 3D subsystem
+(matrix and camera conventions, mesh well-formedness and unit normals, that the
+rasterizer actually draws geometry and shades into discrete bands, near-plane
+clipping, and that every camera path closes so clips loop), and the narrative
+arc (shape, no repeated lines in a long piece, and that each duration lands
+within 15% of its target).
 
 ---
 
 ## Known gaps
 
-- Voiceover audio is silent, and visuals (clips and stills alike) are procedural
-  abstract motion until keys are supplied.
+- Voiceover audio is silent until a TTS key is supplied.
+- 3D sets are procedural and abstract — stylised geometry, not photographic
+  footage. A hosted video model replaces them when one is configured.
 - Platform uploads are not implemented (see **Publishing** above).
 - No payment processor — switching plans grants credits directly.
 - Music library is metadata-only; no audio ships with the repo. Drop files in

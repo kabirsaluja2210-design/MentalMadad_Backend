@@ -87,6 +87,42 @@ export const VIDEO_MODES: VideoMode[] = [
     ],
   },
   {
+    id: 'short-documentary',
+    name: 'Short Documentary',
+    tagline: 'A full 60-second story with a real arc, animated in 3D',
+    description:
+      'A complete narrated piece — hook, premise, development, turn and ' +
+      'resolution — rendered as 3D cel-shaded animation. Built for the full ' +
+      'minute rather than a clip that runs out of script halfway.',
+    glyph: '🎥',
+    defaultDurationSec: 60,
+    minDurationSec: 30,
+    maxDurationSec: 180,
+    defaultAspect: '9:16',
+    sourceTypes: ['prompt', 'idea', 'url'],
+    secondsPerBeat: 4.5,
+    visualStyle: 'cartoon-3d',
+    visualOutput: 'video',
+    captionStyle: 'karaoke',
+    motions: ['static'],
+    musicMood: 'epic-ambient',
+    options: [
+      { key: 'register', label: 'Voice', type: 'select', default: 'documentary',
+        options: [
+          { value: 'documentary', label: 'Documentary — explanatory, third person' },
+          { value: 'story', label: 'Story — first person, scene-driven' },
+        ],
+        help: 'Sets how the narration is written.' },
+      { key: 'tone', label: 'Tone', type: 'select', default: 'documentary', options: TONE_OPTIONS },
+      { key: 'narrationPace', label: 'Narration pace', type: 'select', default: 'normal',
+        options: [
+          { value: 'slow', label: 'Slow & weighty' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'fast', label: 'Fast' },
+        ] },
+    ],
+  },
+  {
     id: 'cinematic-short',
     name: 'Cinematic Short',
     tagline: 'Dramatic narrated fact or scenario, one striking visual per beat',
@@ -101,7 +137,7 @@ export const VIDEO_MODES: VideoMode[] = [
     defaultAspect: '9:16',
     sourceTypes: ['prompt', 'idea'],
     secondsPerBeat: 5,
-    visualStyle: 'cinematic-3d',
+    visualStyle: 'cartoon-3d',
     visualOutput: 'video',
     captionStyle: 'block',
     motions: ['kenburns-in', 'kenburns-out', 'zoom-pulse'],
