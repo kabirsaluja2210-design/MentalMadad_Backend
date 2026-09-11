@@ -152,11 +152,15 @@ function arcPlanner(modeId: string, defaultRegister: Register): Planner {
     }
 
     const phrase = topicPhrase(req.topic);
+    // An explicit subject forces the 3D set; the scene picker matches on the
+    // visual prompt, so naming it there is all the wiring it needs.
+    const subject = options.subject && options.subject !== 'auto' ? `${options.subject} ` : '';
+
     const beats: ScriptBeat[] = arc.map((beat, i) => ({
       text: beat.text,
       // The visual prompt carries the topic plus the beat's narrative role, so
       // the 3D scene picker has something concrete to match on.
-      visualPrompt: `${phrase} — ${beat.function} beat: ${trimTo(beat.text, 12)}`,
+      visualPrompt: `${subject}${phrase} — ${beat.function} beat: ${trimTo(beat.text, 12)}`,
       motion: mode.motions[i % mode.motions.length],
     }));
 
@@ -173,6 +177,7 @@ function arcPlanner(modeId: string, defaultRegister: Register): Planner {
 }
 
 const shortDocumentary = arcPlanner('short-documentary', 'documentary');
+const mechanismExplainer = arcPlanner('mechanism-explainer', 'mechanism');
 const cinematicShort = arcPlanner('cinematic-short', 'documentary');
 
 const aiShort: Planner = ({ req, options, wordBudget }) => {
@@ -432,6 +437,7 @@ const PLANNERS: Record<string, Planner> = {
   'reddit-story': redditStory,
   'cinematic-short': cinematicShort,
   'short-documentary': shortDocumentary,
+  'mechanism-explainer': mechanismExplainer,
   'ai-short': aiShort,
   timelapse,
   'long-form-story': longFormStory,

@@ -2,7 +2,7 @@ import type { RgbPixel } from '@/lib/media-encode';
 import { hslToRgb } from '../painters';
 import { seededRandom } from '@/lib/media-encode';
 import {
-  type Mat4, type Vec3, identity, lookAt, multiply, pingPong, rotationY, rotationZ,
+  type Mat4, type Vec3, identity, lookAt, multiply, pingPong, rotationX, rotationY, rotationZ,
   scaling, smoothstep, translation,
 } from './math';
 import { type Mesh, box, capsule, cylinder, ground, sphere, transformMesh } from './mesh';
@@ -38,6 +38,7 @@ export interface SceneSpec {
 
 export const SCENE_KINDS = [
   'hills', 'city', 'peaks', 'forest', 'coast', 'interior', 'crowd',
+  'vehicle', 'machine',
 ] as const;
 export type SceneKind = (typeof SCENE_KINDS)[number];
 
@@ -86,6 +87,9 @@ const PALETTE_FAMILIES: Record<string, (rand: () => number) => Palette> = {
     accent: hslToRgb(18, 0.5, 0.6),
     outline: [22, 26, 34],
   }),
+  // Explainer look: pale desaturated sky, dark ground, one saturated hero.
+  vehicle: (rand) => product(rand),
+  machine: (rand) => product(rand),
   interior: (rand) => ({
     sky: [hslToRgb(34, 0.3, 0.78), hslToRgb(34, 0.25, 0.68)],
     ground: hslToRgb(28, 0.32, 0.52),
@@ -95,6 +99,23 @@ const PALETTE_FAMILIES: Record<string, (rand: () => number) => Palette> = {
     outline: [30, 24, 22],
   }),
 };
+
+/**
+ * Product/mechanism palette: a pale, almost colourless sky and dark ground so
+ * the single saturated hero object carries the whole frame. Smooth shading
+ * needs the surroundings to stay quiet or the subject stops reading.
+ */
+function product(rand: () => number): Palette {
+  const heroHue = [12, 210, 30, 348][Math.floor(rand() * 4)];
+  return {
+    sky: [hslToRgb(205, 0.28, 0.7), hslToRgb(200, 0.16, 0.84)],
+    ground: hslToRgb(215, 0.05, 0.17),
+    primary: hslToRgb(heroHue, 0.68, 0.5),
+    secondary: hslToRgb(215, 0.06, 0.42),
+    accent: hslToRgb(212, 0.08, 0.72),
+    outline: [18, 20, 24],
+  };
+}
 
 /** Green-ground, blue-sky outdoor family shared by the landscape sets. */
 function natural(rand: () => number, groundHue: number, saturation: number, lightness: number): Palette {
@@ -144,6 +165,75 @@ function figure(height: number, body: RgbPixel, head: RgbPixel): { mesh: Mesh; m
       material: body,
     });
   }
+
+  return parts;
+}
+
+/**
+ * A generic road vehicle: a low body, a set-back cabin and four wheels.
+ * Deliberately an archetype rather than any particular model — no badges,
+ * grille pattern or marque-specific shaping.
+ */
+function vehicleParts(length: number, body: RgbPixel, glass: RgbPixel, tyre: RgbPixel) {
+  const u = length / 10;
+  const parts: { mesh: Mesh; material: RgbPixel }[] = [];
+
+  // The body sits high enough to clear the wheels: with it any lower, the top
+  // half of each wheel disappears inside the box and what is left reads as a
+  // crescent rather than a wheel.
+  parts.push({ mesh: transformMesh(box(u * 10, u * 1.6, u * 4), translation(0, u * 2.75, 0)), material: body });
+  parts.push({ mesh: transformMesh(box(u * 5.2, u * 1.5, u * 3.6), translation(-u * 0.4, u * 4.3, 0)), material: glass });
+  // Sill running between the wheels, inset so the wheels stand proud of it.
+  parts.push({ mesh: transformMesh(box(u * 6.2, u * 0.8, u * 3.4), translation(0, u * 1.9, 0)), material: tyre });
+
+  // Wheels are discs on an X axis, so the cylinder is rotated a quarter turn.
+  for (const dx of [-u * 3.1, u * 3.1]) {
+    for (const dz of [-u * 2.15, u * 2.15]) {
+      parts.push({
+        mesh: transformMesh(
+          cylinder(u * 1.5, u * 1.5, u * 0.75, 16),
+          multiply(translation(dx, u * 1.5, dz), rotationZ(Math.PI / 2)),
+        ),
+        material: tyre,
+      });
+    }
+  }
+  return parts;
+}
+
+/**
+ * A generic mechanical assembly: a block, a bank of cylinders, a pulley and
+ * some piping. An archetype of a machine, not a copy of any real unit.
+ */
+function machineParts(scaleUnit: number, metal: RgbPixel, dark: RgbPixel, accent: RgbPixel) {
+  const u = scaleUnit;
+  const parts: { mesh: Mesh; material: RgbPixel }[] = [];
+
+  parts.push({ mesh: transformMesh(box(u * 4, u * 2.6, u * 3), translation(0, u * 1.3, 0)), material: metal });
+  parts.push({ mesh: transformMesh(box(u * 3.6, u * 0.8, u * 2.6), translation(0, u * 3, 0)), material: dark });
+
+  // Cylinder bank across the top.
+  // Spaced wider than their diameter, or the bank merges into one slab.
+  for (let i = 0; i < 4; i++) {
+    parts.push({
+      mesh: transformMesh(cylinder(u * 0.34, u * 0.34, u * 1.4, 12), translation(-u * 1.5 + i * u * 1.0, u * 4.05, 0)),
+      material: accent,
+    });
+  }
+
+  // Pulley on the front face and a length of pipe along the side.
+  // Housing for the pulley. The rotating face is mounted clear in front of
+  // this rather than through it: coplanar surfaces at the same depth stipple
+  // badly under a z-buffer.
+  parts.push({
+    mesh: transformMesh(cylinder(u * 0.95, u * 0.95, u * 0.36, 16), multiply(translation(u * 2.12, u * 1.5, 0), rotationZ(Math.PI / 2))),
+    material: dark,
+  });
+  parts.push({
+    mesh: transformMesh(cylinder(u * 0.22, u * 0.22, u * 3.4, 10), multiply(translation(-u * 0.2, u * 2.2, u * 1.7), rotationX(Math.PI / 2))),
+    material: dark,
+  });
+  parts.push({ mesh: transformMesh(box(u * 4.2, u * 0.4, u * 3.2), translation(0, u * 0.2, 0)), material: dark });
 
   return parts;
 }
@@ -374,6 +464,127 @@ const coast: Builder = (rand, palette) => {
   };
 };
 
+/**
+ * Explainer render options: smooth shading, a specular highlight and no
+ * outlines. Cel bands and ink lines are exactly what this genre does not do.
+ */
+function productOptions(palette: Palette, fog: number): RenderOptions {
+  return {
+    lightDirection: [-0.4, -0.78, -0.48],
+    skyTop: palette.sky[0],
+    skyBottom: palette.sky[1],
+    outlineColor: palette.outline,
+    outlineWidth: 0,
+    fogStrength: fog,
+    shading: 'smooth',
+    specular: 0.5,
+  };
+}
+
+/**
+ * Distance at which an object of `boundingRadius` fits the frame.
+ *
+ * In a portrait frame the horizontal field is the binding constraint -- at 9:16
+ * it is only ~56% of the vertical -- so framing by vertical FOV alone crops the
+ * subject badly. This solves for whichever axis is tighter.
+ */
+export function framingDistance(
+  boundingRadius: number, fov: number, aspectRatio: number, margin = 1.25,
+): number {
+  const halfVertical = Math.tan(fov / 2);
+  const halfHorizontal = halfVertical * aspectRatio;
+  return (boundingRadius * margin) / Math.max(1e-3, Math.min(halfVertical, halfHorizontal));
+}
+
+/**
+ * Slow continuous arc around a hero object, easing out and back so the clip
+ * loops. This genre holds one moving shot rather than cutting, so the move has
+ * to stay interesting on its own.
+ */
+function heroCamera(
+  radius: number, height: number, target: Vec3, sweep: number, fov: number, push = 0,
+): (t: number) => Camera {
+  return (t: number) => {
+    const angle = (sweep / 2) * Math.sin(Math.PI * 2 * t);
+    // A gentle push-in layered under the arc adds depth without a cut.
+    const distance = radius - push * pingPong(t);
+    const eye: Vec3 = [
+      target[0] + Math.sin(angle) * distance,
+      height,
+      target[2] + Math.cos(angle) * distance,
+    ];
+    return { position: eye, view: lookAt(eye, target), fov };
+  };
+}
+
+const vehicle: Builder = (rand, palette, aspectRatio) => {
+  const statics: SceneObject[] = [];
+
+  // Dark road surface with a lighter shoulder either side.
+  statics.push(obj(ground(260, 24, (x) => (Math.abs(x) > 9 ? 0.35 : 0)), palette.ground, identity(), 0.25));
+  for (const dx of [-9.6, 9.6]) {
+    statics.push(obj(box(0.5, 0.16, 240), palette.accent, translation(dx, 0.4, 0), 0.4));
+  }
+  // Lane dashes running into the distance.
+  for (let i = -8; i < 14; i++) {
+    statics.push(obj(box(0.28, 0.06, 3.4), palette.accent, translation(0, 0.32, i * 9), 0.4));
+  }
+  // A barrier rail gives the shot a horizon anchor.
+  for (let i = -6; i < 10; i++) {
+    statics.push(obj(box(0.22, 0.55, 7.6), palette.secondary, translation(-11.2, 1.15, i * 8), 0.3));
+  }
+
+  const heroParts = vehicleParts(9, palette.primary, palette.secondary, [26, 26, 30]);
+  for (const part of heroParts) statics.push(obj(part.mesh, part.material, identity(), 0.2));
+
+  // The body is 9 long and ~4 wide, so the bounding radius is about 5.5.
+  const fov = 0.9;
+  const distance = framingDistance(5.5, fov, aspectRatio, 1.12);
+
+  return {
+    kind: 'vehicle',
+    statics,
+    animated: [],
+    camera: heroCamera(distance, distance * 0.22, [0, 1.9, 0], 1.5, fov, distance * 0.18),
+    options: productOptions(palette, 0.32),
+  };
+};
+
+const machine: Builder = (rand, palette, aspectRatio) => {
+  const statics: SceneObject[] = [
+    obj(ground(160, 12), palette.ground, identity(), 0.3),
+  ];
+
+  const unit = 1.5;
+  for (const part of machineParts(unit, palette.secondary, [34, 36, 42], palette.primary)) {
+    statics.push(obj(part.mesh, part.material, identity(), 0.22));
+  }
+
+  // A slowly turning pulley keeps the mechanism alive while the camera arcs.
+  const animated: AnimatedObject[] = [{
+    object: obj(
+      cylinder(unit * 0.62, unit * 0.62, unit * 0.5, 16),
+      palette.primary, identity(), 0.22,
+    ),
+    // Sits in front of the housing face (which ends at x = 2.3u), not inside it.
+    at: (t) => multiply(
+      multiply(translation(unit * 2.62, unit * 1.5, 0), rotationZ(Math.PI / 2)),
+      rotationY(t * Math.PI * 2),
+    ),
+  }];
+
+  const fov = 0.85;
+  const distance = framingDistance(unit * 3.2, fov, aspectRatio, 1.12);
+
+  return {
+    kind: 'machine',
+    statics,
+    animated,
+    camera: heroCamera(distance, distance * 0.32, [0, unit * 2, 0], 1.9, fov, distance * 0.16),
+    options: productOptions(palette, 0.25),
+  };
+};
+
 const interior: Builder = (rand, palette) => {
   const statics: SceneObject[] = [
     obj(ground(26, 4), palette.ground),
@@ -454,7 +665,7 @@ function baseOptions(palette: Palette, fog: number): RenderOptions {
 }
 
 const BUILDERS: Record<SceneKind, Builder> = {
-  hills, city, peaks, forest, coast, interior, crowd,
+  hills, city, peaks, forest, coast, interior, crowd, vehicle, machine,
 };
 
 // ---------------------------------------------------------------- selection
@@ -467,6 +678,10 @@ const BUILDERS: Record<SceneKind, Builder> = {
 export function chooseSceneKind(prompt: string, seed: number): SceneKind {
   const text = prompt.toLowerCase();
   const rules: [RegExp, SceneKind][] = [
+    // Subject-led sets are checked first: an explainer about a car on a road
+    // should show the car, not the streetscape behind it.
+    [/\b(car|vehicle|truck|van|driver|driving|crash|collision|road|brake|tyre|tire|seatbelt|steering|chassis|bumper)\b/, 'vehicle'],
+    [/\b(engine|motor|machine|mechanism|gear|piston|pump|turbine|valve|bearing|shaft|pulley|hydraulic|assembly)\b/, 'machine'],
     [/\b(city|cities|urban|street|building|tower|downtown|skyline)\b/, 'city'],
     [/\b(mountain|peak|ridge|summit|alpine|volcano|cliff)\b/, 'peaks'],
     [/\b(forest|tree|wood|jungle|canopy)\b/, 'forest'],
@@ -481,10 +696,28 @@ export function chooseSceneKind(prompt: string, seed: number): SceneKind {
   return SCENE_KINDS[seed % SCENE_KINDS.length];
 }
 
-export function buildScene(prompt: string, seed: number): SceneSpec {
+/** Width / height for the supported output aspects. */
+function aspectRatioOf(aspect: string): number {
+  return aspect === '16:9' ? 16 / 9 : aspect === '1:1' ? 1 : 9 / 16;
+}
+
+export function buildScene(
+  prompt: string, seed: number, aspect = '9:16', style = 'cartoon-3d',
+): SceneSpec {
   const rand = seededRandom(seed);
   const kind = chooseSceneKind(prompt, seed);
-  return BUILDERS[kind](rand, paletteFor(rand, kind), 1);
+  const spec = BUILDERS[kind](rand, paletteFor(rand, kind), aspectRatioOf(aspect));
+
+  // Explainer formats are smooth-shaded and un-inked whatever set they land on;
+  // otherwise a topic without a mechanism keyword would come back cel-shaded
+  // in the middle of an otherwise photographic-looking piece.
+  if (style === 'product-3d') {
+    return {
+      ...spec,
+      options: { ...spec.options, shading: 'smooth', specular: 0.45, outlineWidth: 0 },
+    };
+  }
+  return spec;
 }
 
 /** Objects for one frame: statics plus animated transforms evaluated at t. */

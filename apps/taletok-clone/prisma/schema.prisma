@@ -81,7 +81,8 @@ model BrandKit {
   watermarkPos   String  @default("bottom-right") // top-left|top-right|bottom-left|bottom-right|center
   watermarkOpacity Float @default(0.75)
   primaryColor   String  @default("#6d5cf6")
-  captionStyle   String  @default("karaoke") // karaoke | block | word-pop | classic
+  // auto = use the format's own caption style; anything else overrides it.
+  captionStyle   String  @default("auto") // auto | karaoke | block | word-pop | classic
   captionFont    String  @default("Inter-Bold")
   captionColor   String  @default("#ffffff")
   captionHighlight String @default("#ffe14d")

@@ -8,9 +8,9 @@ import { VIDEO_MODES } from '@/pipeline/modes';
 const STYLES = [
   'cinematic-3d', 'illustrated', 'timelapse-frames', 'graphic-card',
   'chat-thread', 'typography', 'background-loop',
-  // 3D formats render through the rasterizer; this painter is the still
-  // fallback used when a user forces images on them.
-  'cartoon-3d',
+  // 3D formats render through the rasterizer; these painters are the still
+  // fallbacks used when a user forces images on them.
+  'cartoon-3d', 'product-3d',
 ];
 
 function sample(style: string, t: number, x = 40, y = 90) {

@@ -51,6 +51,14 @@ export interface RenderOptions {
    * ground plane draws a hard line straight across the horizon.
    */
   outlineMaxDistance?: number;
+  /**
+   * 'toon' snaps lighting to flat bands for a cartoon look. 'smooth' keeps a
+   * continuous ramp with a specular highlight, which is what product and
+   * mechanism explainers use. Defaults to 'toon'.
+   */
+  shading?: 'toon' | 'smooth';
+  /** Specular strength for smooth shading; ignored for toon. */
+  specular?: number;
 }
 
 const NEAR = 0.1;
@@ -315,6 +323,8 @@ export class Renderer {
 
   private shade(camera: Camera, options: RenderOptions): void {
     const light = normalize(options.lightDirection);
+    const smooth = options.shading === 'smooth';
+    const specular = options.specular ?? 0;
     const { width, height, depth, ids, normals, colors } = this;
 
     // Depth range drives fog; computed per frame so scenes self-normalise.
@@ -355,16 +365,39 @@ export class Renderer {
         nx /= len; ny /= len; nz /= len;
 
         const ndotl = Math.max(0, -(nx * light[0] + ny * light[1] + nz * light[2]));
-        let band = TOON_BANDS[0];
-        for (let b = 0; b < TOON_THRESHOLDS.length; b++) {
-          if (ndotl > TOON_THRESHOLDS[b]) band = TOON_BANDS[b + 1];
-        }
         const ambient = material.ambient ?? 0;
-        const intensity = clamp(band + ambient * (1 - band), 0, 1.2);
 
-        let r = material.color[0] * intensity;
-        let g = material.color[1] * intensity;
-        let b2 = material.color[2] * intensity;
+        let intensity: number;
+        let highlight = 0;
+
+        if (smooth) {
+          // Continuous ramp, lifted off black so shadows keep material colour.
+          intensity = clamp(0.34 + 0.66 * ndotl + ambient * 0.3, 0, 1.25);
+
+          if (specular > 0 && ndotl > 0) {
+            // Blinn-Phong against the halfway vector between light and view.
+            const vx = -(x - width / 2) / width;
+            const vy = (y - height / 2) / height;
+            const vz = -1;
+            const vlen = Math.hypot(vx, vy, vz) || 1;
+            const hx = -light[0] + vx / vlen;
+            const hy = -light[1] + vy / vlen;
+            const hz = -light[2] + vz / vlen;
+            const hlen = Math.hypot(hx, hy, hz) || 1;
+            const ndoth = Math.max(0, (nx * hx + ny * hy + nz * hz) / hlen);
+            highlight = Math.pow(ndoth, 42) * specular * 255;
+          }
+        } else {
+          let band = TOON_BANDS[0];
+          for (let b = 0; b < TOON_THRESHOLDS.length; b++) {
+            if (ndotl > TOON_THRESHOLDS[b]) band = TOON_BANDS[b + 1];
+          }
+          intensity = clamp(band + ambient * (1 - band), 0, 1.2);
+        }
+
+        let r = material.color[0] * intensity + highlight;
+        let g = material.color[1] * intensity + highlight;
+        let b2 = material.color[2] * intensity + highlight;
 
         if (options.fogStrength > 0) {
           const fog = clamp(((nearest - depth[index]) / range) * options.fogStrength, 0, 1);

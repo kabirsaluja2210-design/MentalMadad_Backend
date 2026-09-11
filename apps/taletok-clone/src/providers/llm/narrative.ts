@@ -6,6 +6,11 @@ import { titleCase, topicPhrase } from './text';
  * topicPhrase() strips it, which reads fine after "Imagine …" but produces
  * "For decades, lighthouse on the coast worked …" everywhere else.
  */
+/** Capitalises only the first letter — titleCase mid-sentence reads wrong. */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function subjectPhrase(topic: string): string {
   const cleaned = topic.replace(/[.?!]+$/, '').trim().toLowerCase();
   if (/^(a|an|the)\s+/i.test(cleaned)) return cleaned;
@@ -174,7 +179,77 @@ const STORY: FrameSet = {
   ],
 };
 
-export const REGISTERS = { documentary: DOCUMENTARY, story: STORY } as const;
+
+/**
+ * Mechanism register: the "why does this do that" explainer.
+ *
+ * Structurally different from the other two — it is not about people or
+ * institutions but about a designed object, so the development section walks
+ * the mechanism a step at a time and the resolution explains the intent behind
+ * the design rather than drawing a moral.
+ */
+const MECHANISM: FrameSet = {
+  hook: [
+    (p) => `${sentenceCase(p)} is built to break. That is the whole point.`,
+    (p) => `There is a part of ${p} that is meant to fail before anything else does.`,
+    (p) => `Why does ${p} do the opposite of what you would expect?`,
+  ],
+  premise: [
+    (p) => `Under normal conditions, ${p} behaves exactly as you would assume.`,
+    () => `Nothing about it looks unusual from the outside.`,
+  ],
+  context: [
+    () => `The problem it solves only appears under load.`,
+    () => `Every part of the assembly is holding a force you cannot see.`,
+    () => `The forces involved are far larger than the structure could survive head on.`,
+    () => `So the design does not try to resist them.`,
+  ],
+  development: [
+    () => `Instead, the energy is given somewhere to go.`,
+    () => `A deliberate weak point is placed where the load arrives first.`,
+    () => `When the threshold is crossed, that point gives way before anything else can.`,
+    () => `The failure is not an accident. It is the mechanism working.`,
+    () => `The geometry decides the direction: the part can only move one way.`,
+    () => `That direction is chosen to keep the load away from the vulnerable side.`,
+    () => `Each stage absorbs a fraction of the energy and passes on the rest.`,
+    () => `By the time the force reaches the far end, most of it is already gone.`,
+    () => `The sequence is fixed by the order the components yield in.`,
+    () => `Get the order wrong and the whole strategy inverts.`,
+    () => `The tolerances are tight because the margin is measured in milliseconds.`,
+    () => `Everything downstream is sized around that single assumption.`,
+    () => `The mounting points are the quietest and most important part of the design.`,
+    () => `They are engineered to release cleanly rather than tear.`,
+    () => `A stronger bracket here would make the outcome worse, not better.`,
+    () => `The path the part travels is cleared of anything that could catch it.`,
+    () => `Guides hold it on that path even as the structure deforms around it.`,
+    () => `None of this is visible while it is working correctly.`,
+    () => `Which is why it looks like a flaw until you see it operate.`,
+    () => `The same principle turns up wherever energy has to be spent somewhere.`,
+  ],
+  turn: [
+    () => `Then the load arrives, and everything happens in a fraction of a second.`,
+    () => `Past the design threshold, the behaviour changes completely.`,
+    () => `The moment it yields, the whole geometry reorganises.`,
+  ],
+  consequence: [
+    () => `The energy ends up where the design intended, not where it would naturally go.`,
+    () => `What would have been a rigid collapse becomes a controlled one.`,
+    () => `The part that failed is destroyed. Everything it was protecting is not.`,
+    () => `That trade is made deliberately, every time.`,
+  ],
+  resolution: [
+    () => `Replacing the sacrificial part is cheap. The alternative is not.`,
+    (p) => `So ${p} is built to lose that piece on purpose.`,
+    () => `The design is judged on what survives, not on what breaks.`,
+  ],
+  close: [
+    () => `Engineering is mostly deciding what you are willing to lose.`,
+    () => `Which is why the weakest part is often the most carefully designed one.`,
+    () => `Once you know it is there, you start seeing it everywhere.`,
+  ],
+};
+
+export const REGISTERS = { documentary: DOCUMENTARY, story: STORY, mechanism: MECHANISM } as const;
 export type Register = keyof typeof REGISTERS;
 
 /**
@@ -249,6 +324,9 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 /** A title derived from the topic, in the register's voice. */
 export function arcTitle(topic: string, register: Register): string {
   const phrase = topicPhrase(topic);
+  if (register === 'mechanism') {
+    return titleCase(`Why ${phrase.split(/\s+/).slice(0, 8).join(' ')}`);
+  }
   return register === 'documentary'
     ? titleCase(`The ${phrase.split(/\s+/).slice(0, 6).join(' ')} Story`)
     : titleCase(phrase.split(/\s+/).slice(0, 8).join(' '));

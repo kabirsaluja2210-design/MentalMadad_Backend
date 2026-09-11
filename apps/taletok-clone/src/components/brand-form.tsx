@@ -11,6 +11,7 @@ interface BrandKit {
 
 const POSITIONS = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
 const CAPTION_STYLES = [
+  { value: 'auto', label: 'Follow the format', help: 'Each format uses the caption treatment it was designed with.' },
   { value: 'karaoke', label: 'Karaoke', help: 'Full line on screen, active word highlighted.' },
   { value: 'word-pop', label: 'Word pop', help: 'One large word at a time, centred.' },
   { value: 'block', label: 'Block', help: 'Whole sentence held for the beat.' },
@@ -124,7 +125,9 @@ export function BrandForm({ brandKit }: { brandKit: BrandKit }) {
             }`}
             style={{ color: form.captionColor }}
           >
-            {form.captionStyle === 'word-pop' ? (
+            {form.captionStyle === 'auto' ? (
+              <>Set by the format</>
+            ) : form.captionStyle === 'word-pop' ? (
               <span style={{ color: form.captionHighlight }}>everything</span>
             ) : (
               <>

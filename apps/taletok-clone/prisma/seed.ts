@@ -75,7 +75,7 @@ async function main() {
         workspaceId: workspace.id,
         watermarkText: '@demostudio',
         watermarkPos: 'bottom-right',
-        captionStyle: 'karaoke',
+        captionStyle: 'auto',
         primaryColor: '#6d5cf6',
       },
     });

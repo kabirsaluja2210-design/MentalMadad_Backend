@@ -87,6 +87,43 @@ export const VIDEO_MODES: VideoMode[] = [
     ],
   },
   {
+    id: 'mechanism-explainer',
+    name: 'Mechanism Explainer',
+    tagline: 'Why an object behaves the way it does, in smooth-shaded 3D',
+    description:
+      'The "why does this do that" format: one designed object, held in a ' +
+      'single continuous 3D camera move while the narration walks through the ' +
+      'mechanism. Smooth shading and plain captions rather than a cartoon look.',
+    glyph: '⚙️',
+    defaultDurationSec: 30,
+    minDurationSec: 15,
+    maxDurationSec: 90,
+    defaultAspect: '9:16',
+    sourceTypes: ['prompt', 'idea'],
+    // Long beats: this format holds a moving shot instead of cutting.
+    secondsPerBeat: 6,
+    visualStyle: 'product-3d',
+    visualOutput: 'video',
+    captionStyle: 'block',
+    motions: ['static'],
+    musicMood: 'tense-lofi',
+    options: [
+      { key: 'subject', label: 'Subject', type: 'select', default: 'auto',
+        options: [
+          { value: 'auto', label: 'Auto — pick from the topic' },
+          { value: 'vehicle', label: 'Vehicle' },
+          { value: 'machine', label: 'Machine / mechanism' },
+        ],
+        help: 'Which 3D set the scenes are built from.' },
+      { key: 'narrationPace', label: 'Narration pace', type: 'select', default: 'normal',
+        options: [
+          { value: 'slow', label: 'Slow & weighty' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'fast', label: 'Fast' },
+        ] },
+    ],
+  },
+  {
     id: 'short-documentary',
     name: 'Short Documentary',
     tagline: 'A full 60-second story with a real arc, animated in 3D',

@@ -9,6 +9,9 @@ import { cartoon3dVideo } from './cartoon3d';
  * everything else gets the cheaper animated gradient. Keeping the choice here
  * means the pipeline asks for "a clip" and never has to know which.
  */
+/** Visual styles rendered with real geometry rather than gradients. */
+export const THREE_D_STYLES = new Set(['cartoon-3d', 'product-3d']);
+
 export const proceduralVideo: VideoProvider = {
   info: {
     id: 'procedural',
@@ -20,6 +23,8 @@ export const proceduralVideo: VideoProvider = {
   },
 
   async generate(req: VideoRequest): Promise<VideoResult> {
-    return req.style === 'cartoon-3d' ? cartoon3dVideo.generate(req) : stubVideo.generate(req);
+    return THREE_D_STYLES.has(req.style ?? '')
+      ? cartoon3dVideo.generate(req)
+      : stubVideo.generate(req);
   },
 };

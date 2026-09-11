@@ -8,7 +8,7 @@ const schema = z.object({
   watermarkPos: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center']).optional(),
   watermarkOpacity: z.number().min(0).max(1).optional(),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  captionStyle: z.enum(['karaoke', 'block', 'word-pop', 'classic']).optional(),
+  captionStyle: z.enum(['auto', 'karaoke', 'block', 'word-pop', 'classic']).optional(),
   captionColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   captionHighlight: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   outroText: z.string().max(200).nullable().optional(),

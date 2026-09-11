@@ -217,7 +217,13 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
   await writeFile(
     assPath,
     buildAss(captionScenes, {
-      style: (brand?.captionStyle as CaptionStyle) || (mode.captionStyle as CaptionStyle),
+      // A workspace caption style overrides the format's, but only when the
+      // user has actually chosen one. Previously any brand kit at all won,
+      // so a format could never use the caption treatment it declares.
+      style:
+        brand?.captionStyle && brand.captionStyle !== 'auto'
+          ? (brand.captionStyle as CaptionStyle)
+          : (mode.captionStyle as CaptionStyle),
       aspect: video.aspect,
       fontColor: brand?.captionColor || '#ffffff',
       highlightColor: brand?.captionHighlight || '#ffe14d',

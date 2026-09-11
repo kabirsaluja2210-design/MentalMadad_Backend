@@ -54,11 +54,12 @@ or set `FFMPEG_PATH`. Settings will tell you if it is missing.
 
 ---
 
-## The ten formats
+## The eleven formats
 
 | Format | What it makes |
 |---|---|
 | **Reddit Story** | Forum story narrated over a moving background, karaoke captions |
+| **Mechanism Explainer** | Why a designed object behaves as it does — smooth-shaded 3D, one continuous move |
 | **Short Documentary** | A full 60s piece with a real arc, animated in 3D cel shading |
 | **Cinematic Short** | Slow dramatic voiceover, animated in 3D cel shading |
 | **AI Short** | General-purpose: any topic (or your own script) into a short |
@@ -90,28 +91,47 @@ pixels in JS would be far too slow.
 
 ### 3D cartoon animation
 
-Two formats (**Short Documentary** and **Cinematic Short**) render their scenes
-with a **software 3D renderer written from scratch** — no GPU, no WebGL, no API
+Three formats (**Mechanism Explainer**, **Short Documentary** and **Cinematic
+Short**) render their scenes with a **software 3D renderer written from scratch** — no GPU, no WebGL, no API
 key, no model files. It is real geometry, not a filter over a still:
 
 - a perspective camera with **near-plane clipping**, and a half-space triangle
   rasterizer with a z-buffer and perspective-correct normal interpolation;
-- **cel shading** — lighting is snapped to four flat bands rather than a smooth
-  ramp, which is what gives the cartoon look;
+- two shading models — **cel** (four flat bands, cartoon) and **smooth**
+  (continuous ramp with a Blinn-Phong highlight, for explainers);
 - **cartoon outlines**, drawn as a post-pass wherever the frame is
   discontinuous in object id, depth, or normal (a crease), and faded out past a
   distance so the horizon is not inked;
-- seven procedural **sets** — hills, city, peaks, forest, coast, interior,
-  crowd — chosen by keyword-matching the beat's visual prompt, with distance
-  fog and per-archetype palettes;
+- nine procedural **sets** — hills, city, peaks, forest, coast, interior, crowd,
+  plus **vehicle** and **machine** hero sets — chosen by keyword-matching the
+  beat's visual prompt, with distance fog and per-archetype palettes;
+- **aspect-aware framing**: the distance needed to fit a subject is solved for
+  whichever axis is tighter, since at 9:16 the horizontal field is only ~56% of
+  the vertical and framing by vertical FOV alone crops the subject badly;
 - animated cameras and figures, on cycles that close over the clip so it loops.
 
-Every mesh is generated from parameters (`mesh.ts`) and every figure is a
-**generic original form** — a capsule torso, a sphere head, simple limbs. There
-are no model assets in the repo and nothing is traced from existing artwork.
+Every mesh is generated from parameters (`mesh.ts`). Figures are **generic
+original forms** — a capsule torso, a sphere head, simple limbs — and the
+vehicle and machine sets are archetypes built from boxes and cylinders, with no
+marque, badge or model-specific shaping. There are no model assets in the repo
+and nothing is traced from existing artwork or products.
 
 A 4-second 1080x1920 clip takes roughly 1.5s to render; a full 60-second
 documentary renders end to end in under a minute.
+
+### The explainer look
+
+**Mechanism Explainer** targets the "why does this object do that" genre: one
+designed object held in a **single continuous camera move** rather than cut
+between shots, a pale desaturated sky over a dark ground so the one saturated
+hero carries the frame, smooth shading with a specular highlight, no outlines,
+and plain white captions. Its narration uses a third register — *mechanism* —
+which walks a mechanism a step at a time and closes on design intent rather than
+a moral.
+
+Formats declare the caption treatment they were designed with. A workspace brand
+kit can override it, but only when a style is explicitly chosen: `auto` (the
+default) means each format keeps its own.
 
 ### Writing a full minute
 
@@ -254,7 +274,9 @@ seam, stays in gamut, yields even dimensions for H.264), the 3D subsystem
 rasterizer actually draws geometry and shades into discrete bands, near-plane
 clipping, and that every camera path closes so clips loop), and the narrative
 arc (shape, no repeated lines in a long piece, and that each duration lands
-within 15% of its target).
+within 15% of its target), plus the explainer path — framing distance across
+aspects, that smooth shading yields a continuous ramp where cel shading yields a
+handful of bands, specular response, and subject-led scene routing.
 
 ---
 

@@ -28,12 +28,12 @@ const MAX_CLIP_SECONDS = 4;
 export const cartoon3dVideo: VideoProvider = {
   info: {
     id: 'cartoon3d',
-    name: '3D cartoon renderer',
+    name: '3D renderer (toon + smooth)',
     kind: 'video',
     available: true,
     // Real 3D animation, but procedural sets rather than model-generated film.
     placeholder: true,
-    note: 'In-process 3D toon renderer — cel shading, outlines, animated camera. No API key needed.',
+    note: 'In-process 3D renderer — cel or smooth shading, animated camera. No API key needed.',
   },
 
   async generate(req: VideoRequest): Promise<VideoResult> {
@@ -41,7 +41,8 @@ export const cartoon3dVideo: VideoProvider = {
     const gen = dimensionsFor(req.aspect, RENDER_SCALE);
 
     const seed = req.seed || hashString(req.prompt);
-    const spec = buildScene(req.prompt, seed);
+    // Framing depends on the output aspect: portrait crops far tighter.
+    const spec = buildScene(req.prompt, seed, req.aspect, req.style);
     const renderer = new Renderer(gen.width, gen.height);
 
     const clipSeconds = Math.min(MAX_CLIP_SECONDS, Math.max(1, req.durationMs / 1000));
