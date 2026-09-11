@@ -189,6 +189,7 @@ export const blenderVideo: VideoProvider = {
           fov: 0.9,
           samples: SAMPLES,
           quality: QUALITY,
+          shot: req.shot || 'auto',
           // Distribution builds are often compiled without OpenImageDenoise;
           // the script probes for it and falls back to raw samples.
           denoise: true,

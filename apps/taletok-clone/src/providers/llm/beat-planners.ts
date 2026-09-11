@@ -158,6 +158,7 @@ function arcPlanner(modeId: string, defaultRegister: Register): Planner {
 
     const beats: ScriptBeat[] = arc.map((beat, i) => ({
       text: beat.text,
+      shot: beat.function,
       // The visual prompt carries the topic plus the beat's narrative role, so
       // the 3D scene picker has something concrete to match on.
       visualPrompt: `${subject}${phrase} — ${beat.function} beat: ${trimTo(beat.text, 12)}`,

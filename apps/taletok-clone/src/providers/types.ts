@@ -28,6 +28,11 @@ export interface ProviderInfo {
 export interface ScriptBeat {
   /** Narration for this beat — one or two sentences. */
   text: string;
+  /**
+   * Narrative role (hook, development, turn…). Drives the camera treatment,
+   * so a piece cuts between framings instead of repeating one move.
+   */
+  shot?: string;
   /** What the visual for this beat should show. */
   visualPrompt: string;
   /** Camera move hint for the compositor. */
@@ -144,6 +149,8 @@ export interface VideoRequest {
   durationMs: number;
   /** Renderer preference: 'fast' | 'blender'. Ignored by hosted providers. */
   renderer?: string;
+  /** Narrative role of this beat; selects the camera treatment. */
+  shot?: string;
   outPath: string;
 }
 

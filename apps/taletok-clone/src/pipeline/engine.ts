@@ -174,6 +174,7 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
         style: mode.visualStyle,
         durationMs: scene.durationMs,
         renderer: video.renderer,
+        shot: scene.shot,
         outPath: `${workDir}/scene-${scene.index}.mp4`,
       });
       scenes[i] = await db.scene.update({
@@ -318,6 +319,7 @@ async function createScenesFromBeats(
           videoId,
           index: i,
           text: beats[i].text,
+          shot: beats[i].shot ?? 'auto',
           visualPrompt: beats[i].visualPrompt,
           motion: beats[i].motion || motions[i % motions.length],
           durationMs: Math.round(secondsPerBeat * 1000),

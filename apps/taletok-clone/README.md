@@ -216,6 +216,22 @@ than killing the job. Install with `apt install blender` (or `brew install
 Note that distribution builds of Blender are often compiled without
 OpenImageDenoise; the script probes for it and falls back to raw sampling.
 
+### Shot variety
+
+Every scene using the same slow orbit is what makes a sequence read as cheap,
+however good the materials are. The narrative arc already labels each beat's
+role, so that label drives the camera: the hook opens wide and high, development
+goes in close and low on the mechanism, the turn drops to ground level on a
+wider lens, and the consequence beat travels outward instead of in. Nine
+treatments in total, each varying framing distance, elevation, arc, lens and
+push.
+
+Motion blur is on by default for the Blender renderer — a perfectly crisp frame
+on a moving camera is a giveaway that it is synthetic.
+
+*Currently wired for the Blender renderer only; the fast rasterizer still uses
+one treatment per archetype.*
+
 ### Writing a full minute
 
 Formats that tell a story build a **narrative arc** sized to the request:
@@ -302,8 +318,14 @@ billed per clip.
 ### Hosted video
 
 **Google Veo** is the only hosted video provider reachable from a restricted
-network here — Replicate, Luma and Runway are all blocked by the egress proxy,
-so keys for those are inert. It reuses the Gemini endpoint and key.
+network here — Replicate, Luma, Runway, fal, Stability and MiniMax are all
+blocked by the egress proxy, so keys for those are inert. It reuses the Gemini
+endpoint and key.
+
+Note that a Gemini free-tier key grants **text quota only**. Both the Veo video
+models and the `*-image` generation models are listed by the API and return
+`429 RESOURCE_EXHAUSTED` on use. There is no free route to generated imagery or
+footage; both need billing enabled.
 
 Veo is **never selected automatically**, even with a key present: it bills per
 clip, and one video is a clip per scene, so a thirty-second piece is eight

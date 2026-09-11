@@ -188,6 +188,8 @@ model Scene {
   startMs      Int     @default(0)
   durationMs   Int     @default(3000)
   motion       String  @default("kenburns-in") // kenburns-in|kenburns-out|pan-left|pan-right|static|zoom-pulse
+  // Narrative role of the beat; selects the 3D camera treatment.
+  shot         String  @default("auto")
   transition   String  @default("fade")
   wordsJson    String  @default("[]") // word-level caption timings
   status       String  @default("PENDING") // PENDING|READY|FAILED

@@ -186,6 +186,50 @@ describe('quality tiers', () => {
   });
 });
 
+describe('shot variety', () => {
+  // One repeated orbit is what makes a sequence read as cheap however good the
+  // materials are. Treatment is driven by each beat's narrative role.
+
+  it('defines a treatment for every narrative role', () => {
+    for (const role of [
+      'hook', 'premise', 'context', 'development',
+      'turn', 'consequence', 'resolution', 'close', 'auto',
+    ]) {
+      expect(SCRIPT, role).toContain(`"${role}":`);
+    }
+  });
+
+  it('names the elevation key so it cannot collide with image height', () => {
+    // The spec carries an image "height", and the override merge adopted it,
+    // putting the camera 960x the framing distance into the sky. Every frame
+    // came back black and rendered suspiciously fast.
+    expect(SCRIPT).toContain('"elevation"');
+    expect(SCRIPT).not.toMatch(/"height": 0\.\d+,/);
+  });
+
+  it('takes development in close and pushes the turn low', () => {
+    const development = SCRIPT.match(/"development":\s*\{[^}]*\}/)?.[0] ?? '';
+    const hook = SCRIPT.match(/"hook":\s*\{[^}]*\}/)?.[0] ?? '';
+    const turn = SCRIPT.match(/"turn":\s*\{[^}]*\}/)?.[0] ?? '';
+
+    const distanceOf = (s: string) => Number(s.match(/"distance": ([\d.]+)/)?.[1]);
+    const elevationOf = (s: string) => Number(s.match(/"elevation": ([\d.]+)/)?.[1]);
+
+    expect(distanceOf(development)).toBeLessThan(distanceOf(hook));
+    expect(elevationOf(turn)).toBeLessThan(elevationOf(hook));
+  });
+
+  it('pulls back on the consequence beat', () => {
+    const consequence = SCRIPT.match(/"consequence":\s*\{[^}]*\}/)?.[0] ?? '';
+    // A negative push travels outward across the clip.
+    expect(consequence).toMatch(/"push": -/);
+  });
+
+  it('enables motion blur, since a crisp moving frame looks synthetic', () => {
+    expect(SCRIPT).toContain('use_motion_blur');
+  });
+});
+
 describe('colour handling', () => {
   it('converts sRGB to linear for Blender', async () => {
     // Blender works in linear light; feeding it sRGB washes everything out.

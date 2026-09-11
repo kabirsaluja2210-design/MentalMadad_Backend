@@ -807,6 +807,46 @@ def build_landscape(palette, rng):
     return objects
 
 
+
+# ----------------------------------------------------------------- shots
+
+# Camera treatment per narrative role.
+#
+# Every scene using the same slow orbit is what makes a sequence read as
+# cheap, however good the materials are. A piece that cuts between a wide
+# establishing shot, a detail push and a low angle reads as directed. Each
+# entry scales the framing distance, the camera height, how far it arcs, the
+# lens and how much it pushes in over the clip.
+#
+#   distance: multiplier on the computed framing distance
+#   elevation: multiplier on that distance, giving the camera height.
+#              Deliberately not called "height": the spec carries an image
+#              height, and the override merge below would silently adopt it.
+#   sweep:    radians of arc across the clip
+#   fov:      vertical field of view; lower is longer and flatter
+#   push:     fraction of the distance travelled inward and back
+#   angle:    starting angle around the subject
+SHOTS = {
+    "hook":        {"distance": 1.35, "elevation": 0.30, "sweep": 0.30, "fov": 0.95, "push": 0.16, "angle": 0.80},
+    "premise":     {"distance": 1.05, "elevation": 0.26, "sweep": 0.50, "fov": 0.90, "push": 0.12, "angle": 1.10},
+    "context":     {"distance": 1.15, "elevation": 0.62, "sweep": 0.40, "fov": 0.85, "push": 0.10, "angle": -0.70},
+    # Development is where the mechanism is explained, so it goes in close.
+    "development": {"distance": 0.62, "elevation": 0.16, "sweep": 0.34, "fov": 0.72, "push": 0.20, "angle": 0.45},
+    # The turn drops low and moves faster; it is the beat with the most force.
+    "turn":        {"distance": 0.72, "elevation": 0.07, "sweep": 0.70, "fov": 1.05, "push": 0.22, "angle": -1.25},
+    "consequence": {"distance": 1.30, "elevation": 0.34, "sweep": 0.46, "fov": 0.95, "push": -0.18, "angle": 1.45},
+    "resolution":  {"distance": 1.00, "elevation": 0.30, "sweep": 0.52, "fov": 0.88, "push": 0.10, "angle": -0.95},
+    "close":       {"distance": 1.10, "elevation": 0.24, "sweep": 0.16, "fov": 0.80, "push": 0.06, "angle": 0.65},
+    "auto":        {"distance": 1.00, "elevation": 0.28, "sweep": 0.50, "fov": 0.90, "push": 0.14, "angle": 0.70},
+}
+
+
+def shot_for(spec):
+    """Treatment for this beat, with any explicit spec value taking priority."""
+    shot = SHOTS.get(spec.get("shot", "auto"), SHOTS["auto"])
+    return {**shot, **{k: v for k, v in spec.items() if k in shot}}
+
+
 # -------------------------------------------------------------------- camera
 
 def setup_camera(spec, focus_point, radius, height, sweep, fov, push):
@@ -936,6 +976,11 @@ def configure_render(spec):
         scene.view_settings.view_transform = "Standard"
     scene.view_settings.exposure = spec.get("exposure", -0.9)
 
+    # Motion blur costs little here because the camera move is slow, and a
+    # perfectly crisp frame on a moving shot is a giveaway that it is synthetic.
+    scene.render.use_motion_blur = bool(spec.get("motion_blur", True))
+    scene.render.motion_blur_shutter = spec.get("shutter", 0.35)
+
     scene.frame_start = 1
     scene.frame_end = spec["frames"]
     scene.render.filepath = os.path.join(spec["out_dir"], "frame-")
@@ -1004,23 +1049,25 @@ def main():
         build_vehicle(palette)
         focus = (0, 0, 0.95)
         distance = framing_distance(2.4, spec["fov"], aspect_ratio)
-        height = distance * 0.3
     elif kind == "machine":
         build_ground(120, palette["ground"], roughness=0.8)
         build_machine(palette)
         focus = (0, 0, 1.25)
         distance = framing_distance(2.1, spec["fov"], aspect_ratio)
-        height = distance * 0.42
     else:
         build_landscape(palette, rng)
         focus = (0, -10, 1.5)
         distance = framing_distance(14.0, spec["fov"], aspect_ratio, margin=1.0)
-        height = distance * 0.35
 
     configure_render(spec)
+
+    shot = shot_for(spec)
+    # The set computed a distance that frames the subject; the shot scales it.
+    framed = distance * shot["distance"]
     setup_camera(
-        spec, focus, distance, height,
-        spec.get("sweep", 0.55), spec["fov"], distance * spec.get("push", 0.14),
+        {**spec, "start_angle": shot["angle"], "fov": shot["fov"]},
+        focus, framed, framed * shot["elevation"],
+        shot["sweep"], shot["fov"], framed * shot["push"],
     )
 
     bpy.ops.render.render(animation=True)
