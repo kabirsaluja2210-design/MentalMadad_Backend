@@ -299,6 +299,32 @@ rather than taking the first, since long scripts arrive split across several.
 There is no free tier for video generation anywhere; every text-to-video API is
 billed per clip.
 
+### Hosted video
+
+**Google Veo** is the only hosted video provider reachable from a restricted
+network here — Replicate, Luma and Runway are all blocked by the egress proxy,
+so keys for those are inert. It reuses the Gemini endpoint and key.
+
+Veo is **never selected automatically**, even with a key present: it bills per
+clip, and one video is a clip per scene, so a thirty-second piece is eight
+generations. Opt in with `VIDEO_PROVIDER=veo`.
+
+A key proves entitlement but not usability. The free tier *lists* the Veo models
+and allocates **no quota** to them, so generation fails with `429
+RESOURCE_EXHAUSTED` rather than an auth error — it needs a billing-enabled
+Google Cloud project. The adapter reports this specifically rather than
+implying a bad key, and falls back to the procedural renderer.
+
+Parameters were mapped against the live API: `aspectRatio` (9:16 or 16:9),
+`durationSeconds` (4-8, so four seconds is the floor), `resolution`,
+`personGeneration` and `sampleCount`. There is no `negativePrompt` or
+`generateAudio`.
+
+Worth weighing before paying: model output has no continuity between clips, so
+eight scenes means eight different cars on eight different roads. The
+procedural renderer is worse per frame but consistent by construction — same
+seed, same subject, every scene.
+
 Video models are slow and expensive relative to the rest of the pipeline, so
 those adapters poll with a generous ceiling (`VIDEO_TIMEOUT_MS`, default 5min)
 and fall back to the procedural clip rather than killing a render. Model output

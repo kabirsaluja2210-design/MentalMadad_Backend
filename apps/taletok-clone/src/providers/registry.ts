@@ -12,6 +12,7 @@ import { stubVideo } from './video/stub';
 import { cartoon3dVideo } from './video/cartoon3d';
 import { proceduralVideo } from './video/procedural';
 import { lumaVideo, replicateVideo } from './video/hosted';
+import { veoVideo } from './video/veo';
 import { blenderVideo } from './video/blender';
 import { stubMusic } from './music/stub';
 import { SOCIAL_PLATFORMS, socialProviders } from './social';
@@ -67,7 +68,12 @@ export function getImage(): ImageProvider {
  * not ask for; set VIDEO_RENDERER=blender to flip that default.
  */
 export function getVideo(renderer = 'auto'): VideoProvider {
-  const hosted = pick(process.env.VIDEO_PROVIDER, [replicateVideo, lumaVideo], proceduralVideo);
+  // Veo is listed but never auto-selected: it bills per clip and a single
+  // video is a clip per scene, so it is opted into by name.
+  const hosted =
+    process.env.VIDEO_PROVIDER === 'veo' && veoVideo.info.available
+      ? veoVideo
+      : pick(process.env.VIDEO_PROVIDER, [replicateVideo, lumaVideo], proceduralVideo);
   if (hosted !== proceduralVideo) return hosted;
 
   const preference = renderer === 'auto' ? (process.env.VIDEO_RENDERER || 'fast') : renderer;
@@ -90,7 +96,7 @@ export function providerStatus(): ProviderStatus[] {
     { kind: 'llm', active: getLlm().info, alternatives: [stubLlm.info, geminiLlm.info, anthropicLlm.info, openaiLlm.info] },
     { kind: 'tts', active: getTts().info, alternatives: [localTts.info, stubTts.info, elevenLabsTts.info, openaiTts.info] },
     { kind: 'image', active: getImage().info, alternatives: [stubImage.info, openaiImage.info, replicateImage.info] },
-    { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, blenderVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },
+    { kind: 'video', active: getVideo().info, alternatives: [proceduralVideo.info, cartoon3dVideo.info, blenderVideo.info, veoVideo.info, stubVideo.info, replicateVideo.info, lumaVideo.info] },
     { kind: 'music', active: getMusic().info, alternatives: [stubMusic.info] },
     {
       kind: 'social',
