@@ -177,9 +177,30 @@ API key.
 | | Fast (built-in) | High (Blender) |
 |---|---|---|
 | Engine | Software rasterizer written from scratch | Blender Cycles, path traced |
-| Lighting | Cel or smooth shading, no shadows | Soft shadows, ambient occlusion, bounce |
-| Optics | None | Depth of field, real metallic/roughness |
-| Cost | **~1.5s** per clip | **~2min** per clip |
+| Lighting | Cel or smooth shading, no shadows | Three-point + physical sky, soft shadows, AO |
+| Surfaces | Flat colour | Clearcoat paint, metallic flake, cavity grime, shader bevel |
+| Optics | None | Depth of field, emissive lamps, real IOR glass |
+| Cost | **~1.5s** per clip | **~2min** per clip at *standard* |
+
+#### Where the detail comes from
+
+Almost all of it is shading and lighting, because those are effectively free:
+the full detail treatment measured **6.3s/frame against 6.9s/frame without it**.
+Resolution, sample count and frame count are what actually cost, so they are the
+only things a quality tier changes — every tier gets the same materials.
+
+| Tier | Scale | Samples | fps | Rough cost per clip |
+|---|---|---|---|---|
+| `draft` | 0.45 | 24 | 8 | ~40s |
+| `standard` (default) | 0.62 | 48 | 8 | ~2min |
+| `high` | 0.80 | 96 | 10 | ~8min |
+| `max` | 1.00 | 160 | 12 | ~25min |
+
+Set with `BLENDER_QUALITY`. Times are for four CPU cores; Cycles scales close to
+linearly with cores, so a 16-core machine is roughly four times faster.
+
+**Be realistic about `max`:** at ~25min per clip, a 30-second video of eight
+scenes is around three hours. It is meant for hero shots, not for every video.
 
 `auto` means fast, so nobody waits twenty minutes for a render they did not ask
 for; set `VIDEO_RENDERER=blender` to flip that default, or choose per video at
@@ -359,8 +380,12 @@ handful of bands, specular response, and subject-led scene routing.
 - Local speech is good but not broadcast quality; a hosted voice is still a
   step up if you have one.
 - 3D sets are procedural — stylised original geometry, not photographic
-  footage. Blender raises the lighting and material quality substantially but
-  does not change that; a hosted video model is the only route to realism.
+  footage. The materials and lighting are now genuinely detailed, but the
+  *models* are archetypes built from lofted sections and primitives: a car
+  reads as a car, not as a specific one. Closing that last gap means either
+  modelled assets or a hosted video model.
+- On the vehicle, the bonnet does not yet flow smoothly into the greenhouse;
+  there is a visible step at the base of the windscreen.
 - Platform uploads are not implemented (see **Publishing** above).
 - No payment processor — switching plans grants credits directly.
 - Music library is metadata-only; no audio ships with the repo. Drop files in

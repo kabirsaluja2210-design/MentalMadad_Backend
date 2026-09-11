@@ -95,6 +95,97 @@ describe('build_scene.py invariants', () => {
   });
 });
 
+describe('surface and lighting detail', () => {
+  // These are the cheap half of intricacy: measured at 6.3s/frame with all of
+  // it against 6.9s/frame without, so none of it is traded away per tier.
+
+  it('rounds edges in the shader rather than the mesh', () => {
+    // A Bevel node gives every edge a highlight for a few rays instead of
+    // multiplying geometry, and that highlight is most of what separates a
+    // render from a diagram.
+    expect(SCRIPT).toContain('ShaderNodeBevel');
+  });
+
+  it('drives grime into cavities with ambient occlusion', () => {
+    expect(SCRIPT).toContain('ShaderNodeAmbientOcclusion');
+    expect(SCRIPT).toContain('cavity.inside = True');
+  });
+
+  it('reads the occlusion socket by either of its names', () => {
+    // It is "AO" on current builds and "Fac" on older ones; assuming either
+    // raises KeyError and kills the render.
+    expect(SCRIPT).toContain('cavity.outputs.get("AO") or cavity.outputs.get("Fac")');
+  });
+
+  it('layers car paint as metal plus clearcoat', () => {
+    expect(SCRIPT).toContain('def make_car_paint');
+    expect(SCRIPT).toContain('Coat Weight');
+  });
+
+  it('lights with three sources, not one sun', () => {
+    // A lone sun leaves the shadow side flat and the silhouette merged into
+    // the background.
+    expect(SCRIPT).toContain('def setup_three_point');
+    expect(SCRIPT).toMatch(/rim_light/);
+    expect(SCRIPT).toMatch(/fill_light/);
+  });
+
+  it('uses a physical sky so glossy surfaces have something to reflect', () => {
+    expect(SCRIPT).toContain('ShaderNodeTexSky');
+    expect(SCRIPT).toContain('NISHITA');
+  });
+
+  it('degrades if the sky model is unavailable', () => {
+    expect(SCRIPT).toMatch(/except \(AttributeError, TypeError\)/);
+  });
+
+  it('makes lamps emit rather than painting them bright', () => {
+    expect(SCRIPT).toContain('def make_emissive');
+    expect(SCRIPT).toContain('Emission Strength');
+  });
+
+  it('separates glazing from roof by face normal, not height alone', () => {
+    // Both sit above the belt line, so a height test claims the roof too and
+    // the car renders as a glass dome.
+    expect(SCRIPT).toContain('if nz > 0.55:');
+  });
+
+  it('keeps the view transform out of Filmic', () => {
+    // Filmic lifts shadows and desaturates, washing a dark road to pale grey.
+    expect(SCRIPT).toContain('"view_transform", "Standard"');
+  });
+});
+
+describe('quality tiers', () => {
+  it('defines every tier in both the script and the provider', () => {
+    const provider = readFileSync(
+      path.join(process.cwd(), 'src/providers/video/blender.ts'), 'utf8',
+    );
+    for (const tier of ['draft', 'standard', 'high', 'max']) {
+      expect(SCRIPT, `script ${tier}`).toContain(`"${tier}"`);
+      expect(provider, `provider ${tier}`).toContain(tier);
+    }
+  });
+
+  it('increases cost monotonically across tiers', () => {
+    const provider = readFileSync(
+      path.join(process.cwd(), 'src/providers/video/blender.ts'), 'utf8',
+    );
+    const samples = [...provider.matchAll(/samples: (\d+)/g)].map((m) => Number(m[1]));
+    expect(samples.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i]).toBeGreaterThan(samples[i - 1]);
+    }
+  });
+
+  it('defaults to standard rather than the most expensive tier', () => {
+    const provider = readFileSync(
+      path.join(process.cwd(), 'src/providers/video/blender.ts'), 'utf8',
+    );
+    expect(provider).toContain("process.env.BLENDER_QUALITY || 'standard'");
+  });
+});
+
 describe('colour handling', () => {
   it('converts sRGB to linear for Blender', async () => {
     // Blender works in linear light; feeding it sRGB washes everything out.

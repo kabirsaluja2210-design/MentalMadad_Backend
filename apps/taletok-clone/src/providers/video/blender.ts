@@ -26,10 +26,29 @@ import { proceduralVideo } from './procedural';
 
 const BLENDER = process.env.BLENDER_PATH || 'blender';
 
+/**
+ * Quality tiers.
+ *
+ * Only these three numbers meaningfully drive render time. The material and
+ * lighting detail in the scene script is shared by every tier because shading
+ * complexity costs almost nothing next to resolution, sample count and frame
+ * count -- measured at 6.3s/frame with the full detail treatment against
+ * 6.9s/frame without it.
+ */
+const QUALITY_TIERS: Record<string, { scale: number; samples: number; fps: number }> = {
+  draft: { scale: 0.45, samples: 24, fps: 8 },
+  standard: { scale: 0.62, samples: 48, fps: 8 },
+  high: { scale: 0.8, samples: 96, fps: 10 },
+  max: { scale: 1.0, samples: 160, fps: 12 },
+};
+
+const QUALITY = process.env.BLENDER_QUALITY || 'standard';
+const TIER = QUALITY_TIERS[QUALITY] ?? QUALITY_TIERS.standard;
+
 /** Render fraction of the placeholder frame size; ffmpeg scales up. */
-const RENDER_SCALE = Number(process.env.BLENDER_SCALE || 0.62);
-const SOURCE_FPS = Number(process.env.BLENDER_FPS || 8);
-const SAMPLES = Number(process.env.BLENDER_SAMPLES || 40);
+const RENDER_SCALE = Number(process.env.BLENDER_SCALE || TIER.scale);
+const SOURCE_FPS = Number(process.env.BLENDER_FPS || TIER.fps);
+const SAMPLES = Number(process.env.BLENDER_SAMPLES || TIER.samples);
 const MAX_CLIP_SECONDS = Number(process.env.BLENDER_CLIP_SECONDS || 3);
 const TIMEOUT_MS = Number(process.env.BLENDER_TIMEOUT_MS || 20 * 60_000);
 
@@ -139,7 +158,7 @@ export const blenderVideo: VideoProvider = {
     kind: 'video',
     available: true, // probed properly at call time
     placeholder: false,
-    note: 'Path-traced 3D with real shadows, depth of field and materials. Free and local, but minutes per clip rather than seconds.',
+    note: `Path-traced 3D: clearcoat paint, cavity grime, three-point lighting and a physical sky. Free and local. Quality tier: ${QUALITY}.`,
   },
 
   async generate(req: VideoRequest): Promise<VideoResult> {
@@ -169,6 +188,7 @@ export const blenderVideo: VideoProvider = {
           frames,
           fov: 0.9,
           samples: SAMPLES,
+          quality: QUALITY,
           // Distribution builds are often compiled without OpenImageDenoise;
           // the script probes for it and falls back to raw samples.
           denoise: true,

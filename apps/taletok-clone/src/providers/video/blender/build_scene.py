@@ -134,6 +134,73 @@ def setup_world(sky_top, sky_bottom):
     links.new(background.outputs["Background"], output.inputs["Surface"])
 
 
+def setup_sky(turbidity=3.4, elevation_deg=48, rotation_deg=38, strength=0.32):
+    """
+    Physical sky rather than a flat gradient.
+
+    A gradient world lights everything with one flat colour. A sky model gives
+    a real horizon falloff, warm light near the sun and cool light away from
+    it, and -- most visibly -- something with structure for glossy surfaces to
+    reflect. Reflections are most of what sells a painted or metal surface.
+    """
+    world = bpy.data.worlds.new("Sky")
+    bpy.context.scene.world = world
+    world.use_nodes = True
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+    nodes.clear()
+
+    output = nodes.new("ShaderNodeOutputWorld")
+    background = nodes.new("ShaderNodeBackground")
+    background.inputs["Strength"].default_value = strength
+
+    sky = nodes.new("ShaderNodeTexSky")
+    try:
+        sky.sky_type = "NISHITA"
+        sky.turbidity = turbidity
+        sky.sun_elevation = math.radians(elevation_deg)
+        sky.sun_rotation = math.radians(rotation_deg)
+        sky.sun_intensity = 0.6
+    except (AttributeError, TypeError):
+        # Older builds expose a different sky model; the gradient still works.
+        pass
+
+    links.new(sky.outputs["Color"], background.inputs["Color"])
+    links.new(background.outputs["Background"], output.inputs["Surface"])
+    return world
+
+
+def setup_three_point(key_angle=38, key_elevation=48, key_energy=2.6, fill=0.32, rim=0.9):
+    """
+    Key, fill and rim.
+
+    A single sun leaves the shadow side dead flat and the silhouette merging
+    into the background. The fill lifts the shadow side without killing the
+    form, and the rim separates the subject from whatever is behind it.
+    """
+    bpy.ops.object.light_add(type="SUN", location=(0, 0, 24))
+    key = bpy.context.active_object
+    key.data.energy = key_energy
+    key.data.angle = math.radians(2.5)
+    key.rotation_euler = (math.radians(90 - key_elevation), 0, math.radians(key_angle))
+
+    bpy.ops.object.light_add(type="AREA", location=(-9, -7, 7))
+    fill_light = bpy.context.active_object
+    fill_light.data.energy = fill * 260
+    fill_light.data.size = 12.0
+    fill_light.data.color = (0.74, 0.82, 1.0)
+    fill_light.rotation_euler = (math.radians(62), 0, math.radians(-38))
+
+    bpy.ops.object.light_add(type="AREA", location=(7, 10, 6))
+    rim_light = bpy.context.active_object
+    rim_light.data.energy = rim * 260
+    rim_light.data.size = 7.0
+    rim_light.data.color = (1.0, 0.93, 0.84)
+    rim_light.rotation_euler = (math.radians(74), 0, math.radians(206))
+
+    return key, fill_light, rim_light
+
+
 def setup_sun(angle_deg, elevation_deg, energy):
     bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
     sun = bpy.context.active_object
@@ -213,8 +280,9 @@ def loft(stations, name, materials, crease_bottom=True, face_material=None):
     # whereas a material slot follows the surface exactly.
     if face_material is not None:
         for poly in mesh.polygons:
-            centre = poly.center
-            poly.material_index = face_material(centre.x, centre.y, centre.z)
+            c = poly.center
+            n = poly.normal
+            poly.material_index = face_material(c.x, c.y, c.z, n.x, n.y, n.z)
 
     # Crease the lowest ring so subdivision does not round the sill away.
     if crease_bottom:
@@ -383,6 +451,187 @@ def make_asphalt_material(color):
     return mat
 
 
+
+# ------------------------------------------------- detailed shading
+
+def _shading_detail(tree, bsdf):
+    """
+    Shared surface detail: a shading-only bevel and cavity dirt.
+
+    Both are enormously cheaper than modelling the same thing. A Bevel node
+    rounds edges for the shader alone, so every edge catches a highlight
+    without adding a single polygon, and that highlight is most of what
+    separates a render from a diagram. Ambient occlusion drives grime into
+    crevices, which is what stops a surface reading as freshly extruded.
+    """
+    bevel = tree.nodes.new("ShaderNodeBevel")
+    bevel.samples = 4
+    bevel.inputs["Radius"].default_value = 0.012
+    tree.links.new(bevel.outputs["Normal"], bsdf.inputs["Normal"])
+
+    cavity = tree.nodes.new("ShaderNodeAmbientOcclusion")
+    cavity.samples = 8
+    cavity.inside = True
+    cavity.inputs["Distance"].default_value = 0.035
+
+    # The occlusion socket is "AO" on current builds and "Fac" on older ones.
+    occlusion = cavity.outputs.get("AO") or cavity.outputs.get("Fac")
+    return bevel, occlusion
+
+
+def make_car_paint(name, color, panel_positions):
+    """
+    Automotive paint: metallic base, clearcoat, flake, shut lines and grime.
+
+    Layered the way real paint is: a metallic base carrying fine flake noise,
+    a clearcoat over the top for the deep wet highlight, shut lines darkening
+    both colour and roughness, and dirt gathering in the cavities.
+    """
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+
+    coord = tree.nodes.new("ShaderNodeTexCoord")
+    separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(coord.outputs["Object"], separate.inputs["Vector"])
+
+    # Shut lines.
+    seams = None
+    for position in panel_positions:
+        band = _band(tree, separate.outputs["X"], position, 0.03)
+        if seams is None:
+            seams = band
+        else:
+            maximum = tree.nodes.new("ShaderNodeMath")
+            maximum.operation = "MAXIMUM"
+            tree.links.new(seams, maximum.inputs[0])
+            tree.links.new(band, maximum.inputs[1])
+            seams = maximum.outputs[0]
+
+    painted = tree.nodes.new("ShaderNodeMixRGB")
+    painted.inputs["Color1"].default_value = (*color, 1.0)
+    painted.inputs["Color2"].default_value = (color[0] * 0.14, color[1] * 0.14, color[2] * 0.14, 1.0)
+    if seams is not None:
+        tree.links.new(seams, painted.inputs["Fac"])
+
+    _, cavity = _shading_detail(tree, bsdf)
+
+    # Road grime settles in the cavities and low on the body.
+    grime = tree.nodes.new("ShaderNodeMixRGB")
+    grime.inputs["Color2"].default_value = (0.055, 0.05, 0.045, 1.0)
+    tree.links.new(painted.outputs["Color"], grime.inputs["Color1"])
+
+    dirt_amount = tree.nodes.new("ShaderNodeMath")
+    dirt_amount.operation = "MULTIPLY"
+    dirt_amount.inputs[1].default_value = 0.18
+    tree.links.new(cavity, dirt_amount.inputs[0])
+    tree.links.new(dirt_amount.outputs[0], grime.inputs["Fac"])
+    tree.links.new(grime.outputs["Color"], bsdf.inputs["Base Color"])
+
+    # Metallic flake: fine noise lifting roughness a little, unevenly.
+    flake = tree.nodes.new("ShaderNodeTexNoise")
+    flake.inputs["Scale"].default_value = 900.0
+    flake.inputs["Detail"].default_value = 2.0
+
+    rough = tree.nodes.new("ShaderNodeMapRange")
+    rough.inputs["To Min"].default_value = 0.16
+    rough.inputs["To Max"].default_value = 0.30
+    tree.links.new(flake.outputs["Fac"], rough.inputs["Value"])
+
+    # Shut lines are matte next to the gloss around them.
+    seam_rough = tree.nodes.new("ShaderNodeMixRGB")
+    tree.links.new(rough.outputs[0], seam_rough.inputs["Color1"])
+    seam_rough.inputs["Color2"].default_value = (0.72, 0.72, 0.72, 1.0)
+    if seams is not None:
+        tree.links.new(seams, seam_rough.inputs["Fac"])
+    tree.links.new(seam_rough.outputs["Color"], bsdf.inputs["Roughness"])
+
+    bsdf.inputs["Metallic"].default_value = 0.72
+    for coat, value in (("Coat Weight", 1.0), ("Coat Roughness", 0.04), ("Coat IOR", 1.5)):
+        if coat in bsdf.inputs:
+            bsdf.inputs[coat].default_value = value
+    return mat
+
+
+def make_glass(tint=(0.05, 0.06, 0.07)):
+    """Automotive glazing: dark tint, real IOR, a touch of transmission."""
+    mat = bpy.data.materials.new("Glazing")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*tint, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.04
+    bsdf.inputs["Metallic"].default_value = 0.0
+    if "IOR" in bsdf.inputs:
+        bsdf.inputs["IOR"].default_value = 1.45
+    # Kept low: full transmission would demand far more samples to resolve.
+    if "Transmission Weight" in bsdf.inputs:
+        bsdf.inputs["Transmission Weight"].default_value = 0.22
+    if "Coat Weight" in bsdf.inputs:
+        bsdf.inputs["Coat Weight"].default_value = 0.6
+    return mat
+
+
+def make_tyre():
+    """Rubber with a sidewall pattern and tread, both as bump rather than mesh."""
+    mat = bpy.data.materials.new("Tyre")
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (0.018, 0.018, 0.021, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.82
+
+    coord = tree.nodes.new("ShaderNodeTexCoord")
+    # Wave texture rings the sidewall and reads as tread on the crown.
+    wave = tree.nodes.new("ShaderNodeTexWave")
+    wave.wave_type = "RINGS"
+    wave.inputs["Scale"].default_value = 26.0
+    wave.inputs["Distortion"].default_value = 3.0
+    tree.links.new(coord.outputs["Object"], wave.inputs["Vector"])
+
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.28
+    tree.links.new(wave.outputs["Fac"], bump.inputs["Height"])
+    tree.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return mat
+
+
+def make_brushed_metal(color, roughness=0.28):
+    """Metal with cavity dirt — bare metal with no grime reads as plastic."""
+    mat = bpy.data.materials.new("Metal")
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+    bsdf.inputs["Metallic"].default_value = 0.95
+    bsdf.inputs["Roughness"].default_value = roughness
+
+    _, cavity = _shading_detail(tree, bsdf)
+
+    grime = tree.nodes.new("ShaderNodeMixRGB")
+    grime.inputs["Color1"].default_value = (*color, 1.0)
+    grime.inputs["Color2"].default_value = (0.03, 0.028, 0.026, 1.0)
+    scaled = tree.nodes.new("ShaderNodeMath")
+    scaled.operation = "MULTIPLY"
+    scaled.inputs[1].default_value = 0.7
+    tree.links.new(cavity, scaled.inputs[0])
+    tree.links.new(scaled.outputs[0], grime.inputs["Fac"])
+    tree.links.new(grime.outputs["Color"], bsdf.inputs["Base Color"])
+    return mat
+
+
+def make_emissive(color, strength=12.0):
+    """Lamp lenses that actually emit, so they read as lit rather than painted."""
+    mat = bpy.data.materials.new("Lamp")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*color, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.1
+    if "Emission Color" in bsdf.inputs:
+        bsdf.inputs["Emission Color"].default_value = (*color, 1.0)
+        bsdf.inputs["Emission Strength"].default_value = strength
+    return mat
+
+
 # --------------------------------------------------------------------- sets
 
 def build_ground(size, color, roughness=0.9, subdivide=0):
@@ -408,42 +657,52 @@ def build_vehicle(palette):
     An archetype only -- no marque, badge, grille pattern or model-specific
     shaping.
     """
-    body_mat = make_panelled_material(
-        "Body", palette["primary"], panel_positions=(-1.02, 0.22, 1.30, -1.74),
-    )
-    glass_mat = make_material("Glass", (0.03, 0.04, 0.055), roughness=0.05, metallic=0.25)
-    tyre_mat = make_material("Tyre", (0.028, 0.028, 0.032), roughness=0.9)
-    rim_mat = make_material("Rim", (0.6, 0.62, 0.65), roughness=0.2, metallic=0.95)
-    lamp_mat = make_material("Lamp", (0.95, 0.93, 0.84), roughness=0.08)
-    trim_mat = make_material("Trim", (0.055, 0.055, 0.065), roughness=0.55)
+    body_mat = make_car_paint("Body", palette["primary"], (-1.02, 0.22, 1.30, -1.74))
+    glass_mat = make_glass()
+    tyre_mat = make_tyre()
+    rim_mat = make_brushed_metal((0.62, 0.64, 0.67), roughness=0.18)
+    lamp_mat = make_emissive((0.96, 0.94, 0.86), strength=9.0)
+    tail_mat = make_emissive((0.95, 0.12, 0.08), strength=7.0)
+    trim_mat = make_brushed_metal((0.05, 0.05, 0.056), roughness=0.52)
 
     # (x, half width, deck height, roof height). Roof equals deck wherever
     # there is no cabin, which flattens the section into a bonnet or boot.
     # The end stations taper gently: a hard drop at the last station lofts into
     # a flat wedge that reads as a snowplough rather than a nose.
     stations = [
-        (-2.34, 0.80, 0.70, 0.70),
-        (-2.18, 0.90, 0.84, 0.84),
-        (-1.70, 0.95, 0.90, 0.90),
+        (-2.58, 0.56, 0.40, 0.40),
+        (-2.46, 0.70, 0.52, 0.52),
+        (-2.26, 0.84, 0.66, 0.66),
+        (-2.00, 0.92, 0.78, 0.78),
+        (-1.62, 0.95, 0.88, 0.88),
         (-1.20, 0.96, 0.93, 1.44),
         (-0.60, 0.97, 0.94, 1.66),
         (0.16, 0.97, 0.94, 1.68),
-        (0.76, 0.96, 0.93, 1.48),
-        (1.30, 0.95, 0.90, 0.90),
-        (1.94, 0.92, 0.86, 0.86),
-        (2.28, 0.84, 0.78, 0.78),
-        (2.42, 0.74, 0.68, 0.68),
+        (0.76, 0.96, 0.92, 1.48),
+        (1.28, 0.95, 0.88, 0.88),
+        (1.86, 0.93, 0.78, 0.78),
+        (2.18, 0.89, 0.68, 0.68),
+        (2.40, 0.82, 0.57, 0.57),
+        (2.54, 0.70, 0.47, 0.47),
+        (2.64, 0.54, 0.38, 0.38),
     ]
 
-    def face_material(x, y, z):
-        """Slot 1 is glass: the greenhouse sides and the two screens."""
-        if z < 1.02:
+    def face_material(x, y, z, nx, ny, nz):
+        """
+        Slot 1 is glass: the greenhouse sides and the two screens.
+
+        Position alone is not enough -- the roof panel and the side windows
+        both sit above the belt line, so a height test claims the roof too and
+        the car renders as a glass dome. The face normal separates them: roof
+        faces point up, glazing faces point outward or fore-and-aft.
+        """
+        if z < 1.04 or not (-1.26 < x < 0.84):
             return 0
-        in_cabin = -1.24 < x < 0.82
-        # Flanks of the cabin, plus the raked screens at either end.
-        if in_cabin and abs(y) > 0.55:
-            return 1
-        if in_cabin and z < 1.55 and (x < -1.02 or x > 0.6):
+        # Anything facing substantially upward is roof, not glazing.
+        if nz > 0.55:
+            return 0
+        # Side glass faces outward; the screens face fore and aft.
+        if abs(ny) > 0.5 or abs(nx) > 0.45:
             return 1
         return 0
 
@@ -458,9 +717,20 @@ def build_vehicle(palette):
     # Sill, bumpers and lamps.
     objects.append(cube((3.7, 1.96, 0.12), (0, 0, 0.22), trim_mat, bevel=0.03))
     for sx in (1, -1):
-        objects.append(cube((0.22, 1.78, 0.24), (sx * 2.24, 0, 0.58), trim_mat, bevel=0.06))
+        objects.append(cube((0.16, 1.52, 0.2), (sx * 2.3, 0, 0.5), trim_mat, bevel=0.05))
         for sy in (0.54, -0.54):
-            objects.append(cube((0.1, 0.44, 0.16), (sx * 2.3, sy, 0.82), lamp_mat, bevel=0.03))
+            lens = lamp_mat if sx > 0 else tail_mat
+            objects.append(cube((0.07, 0.38, 0.13), (sx * 2.3, sy * 0.92, 0.78), lens, bevel=0.025))
+
+    # Detail that carries scale: mirrors, a grille, exhaust and door handles.
+    for sy in (0.98, -0.98):
+        objects.append(cube((0.14, 0.22, 0.12), (0.52, sy * 1.02, 1.16), trim_mat, bevel=0.03))
+        objects.append(cube((0.3, 0.06, 0.07), (-0.5, sy * 0.99, 1.0), rim_mat, bevel=0.02))
+    # Grille slats, recessed into the nose rather than floating in front of it.
+    for i in range(7):
+        objects.append(cube((0.05, 0.06, 0.15), (2.4, -0.36 + i * 0.12, 0.62), trim_mat, bevel=0.01))
+    objects.append(cylinder(0.07, 0.26, (-2.4, -0.56, 0.33), rim_mat,
+                            rotation=(0, math.radians(90), 0), verts=16, bevel=0.015))
 
     for x in (1.48, -1.48):
         for y in (0.8, -0.8):
@@ -608,6 +878,23 @@ def framing_distance(bounding_radius, fov, aspect_ratio, margin=1.15):
 
 # -------------------------------------------------------------------- render
 
+# Resolution scale, samples and source frame rate per tier. Shading and
+# lighting cost almost nothing next to these three, which is why the detail
+# work above is shared by every tier and only these numbers move.
+QUALITY_TIERS = {
+    "draft":    {"scale": 0.45, "samples": 24,  "fps": 8},
+    "standard": {"scale": 0.62, "samples": 48,  "fps": 8},
+    "high":     {"scale": 0.80, "samples": 96,  "fps": 10},
+    "max":      {"scale": 1.00, "samples": 160, "fps": 12},
+}
+
+
+def resolve_quality(spec):
+    """Applies a named tier, leaving any explicitly-set value untouched."""
+    tier = QUALITY_TIERS.get(spec.get("quality", "standard"), QUALITY_TIERS["standard"])
+    return {**tier, **{k: v for k, v in spec.items() if k in tier}}
+
+
 def configure_render(spec):
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
@@ -640,8 +927,14 @@ def configure_render(spec):
     scene.render.image_settings.color_mode = "RGB"
     scene.render.film_transparent = False
 
-    scene.view_settings.view_transform = spec.get("view_transform", "Filmic")
-    scene.view_settings.look = spec.get("look", "Medium Contrast")
+    # Filmic/AgX lift shadows and desaturate, which washes a dark road out to
+    # pale grey. Standard keeps the contrast the palette asks for.
+    try:
+        scene.view_settings.view_transform = spec.get("view_transform", "Standard")
+        scene.view_settings.look = spec.get("look", "None")
+    except TypeError:
+        scene.view_settings.view_transform = "Standard"
+    scene.view_settings.exposure = spec.get("exposure", -0.9)
 
     scene.frame_start = 1
     scene.frame_end = spec["frames"]
@@ -681,8 +974,17 @@ def main():
     rng = seeded_random(spec.get("seed", 1))
     aspect_ratio = spec["width"] / spec["height"]
 
-    setup_world(tuple(palette["sky_top"]), tuple(palette["sky_bottom"]))
-    setup_sun(spec.get("sun_angle", 38), spec.get("sun_elevation", 48), spec.get("sun_energy", 3.0))
+    if spec.get("sky", True):
+        setup_sky(elevation_deg=spec.get("sun_elevation", 48),
+                  rotation_deg=spec.get("sun_angle", 38))
+    else:
+        setup_world(tuple(palette["sky_top"]), tuple(palette["sky_bottom"]))
+
+    setup_three_point(
+        key_angle=spec.get("sun_angle", 38),
+        key_elevation=spec.get("sun_elevation", 48),
+        key_energy=spec.get("sun_energy", 3.0),
+    )
 
     kind = spec["kind"]
     if kind == "vehicle":
