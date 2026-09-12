@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { arcShape, buildArc, REGISTERS } from '@/providers/llm/narrative';
 import { stubLlm } from '@/providers/llm/stub';
@@ -123,6 +125,35 @@ describe('duration fitting', () => {
       mode: 'short-documentary', topic: 'the old mill', targetDurationSec: 60,
     });
     expect(script.beats[0].text).toBe(script.hook);
+  });
+});
+
+describe('shot roles for hosted scripts', () => {
+  // The built-in planner labels each beat's role, but a hosted model returns
+  // plain text. Without a positional fallback those scripts render every scene
+  // on the same camera move -- which is exactly what happened on the first
+  // full Gemini-scripted video.
+
+  it('covers a short hosted script end to end', () => {
+    const shape = arcShape(4);
+    expect(shape).toHaveLength(4);
+    expect(new Set(shape).size).toBeGreaterThan(1);
+    expect(shape[0]).toBe('hook');
+  });
+
+  it('never leaves every beat on the same treatment', () => {
+    for (const count of [3, 4, 5, 6, 8, 12]) {
+      const shape = arcShape(count);
+      expect(new Set(shape).size, `${count} beats all identical`).toBeGreaterThan(1);
+    }
+  });
+
+  it('fills roles positionally in the engine when a provider omits them', () => {
+    const engine = readFileSync(
+      path.join(process.cwd(), 'src/pipeline/engine.ts'), 'utf8',
+    );
+    expect(engine).toContain('arcShape(beats.length)');
+    expect(engine).toContain('if (!beats[i].shot)');
   });
 });
 

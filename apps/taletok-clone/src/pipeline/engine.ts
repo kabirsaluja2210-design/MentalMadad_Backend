@@ -6,6 +6,7 @@ import { ensureDir, storagePath, writeFile, fileSize } from '@/lib/storage';
 import { getImage, getLlm, getMusic, getTts, getVideo } from '@/providers/registry';
 import type { ScriptBeat, WordTiming } from '@/providers/types';
 import { getMode, resolveOptions } from './modes';
+import { arcShape } from '@/providers/llm/narrative';
 import { buildAss, type CaptionScene, type CaptionStyle } from './captions';
 import {
   concatClips, finishVideo, makeThumbnail, renderSceneClip, ffmpegAvailable, ffprobeDuration,
@@ -106,6 +107,15 @@ export async function renderVideo(videoId: string, onProgress: ProgressFn): Prom
         visualPrompt: `${video.topic || video.title} — opening hook`,
         motion: mode.motions[0],
       });
+    }
+
+    // Only the built-in planner knows each beat's narrative role; a hosted
+    // model returns plain text, so those scripts would silently lose shot
+    // variety and render every scene on the same camera move. Fill the role in
+    // from the beat's position in the arc whenever it is missing.
+    const shape = arcShape(beats.length);
+    for (let i = 0; i < beats.length; i++) {
+      if (!beats[i].shot) beats[i] = { ...beats[i], shot: shape[i] ?? 'auto' };
     }
 
     scenes = await createScenesFromBeats(video.id, beats, mode.secondsPerBeat, mode.motions);
