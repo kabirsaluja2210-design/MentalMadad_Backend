@@ -90,3 +90,104 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+
+-- ============================================================
+-- TrendPulse — daily trend analysis + subscriptions
+-- Every column below must match the JPA entities exactly, because the
+-- prod profile runs `ddl-auto: validate` after applying this script.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- subscriptions — one row per user (missing row == FREE tier)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id                       BIGSERIAL PRIMARY KEY,
+    user_id                  BIGINT      NOT NULL,
+    plan                     VARCHAR(20) NOT NULL,
+    status                   VARCHAR(20) NOT NULL,
+    current_period_end       TIMESTAMP,
+    cancel_at_period_end     BOOLEAN     NOT NULL DEFAULT FALSE,
+    provider_customer_id     VARCHAR(255),
+    provider_subscription_id VARCHAR(255),
+    created_at               TIMESTAMP   NOT NULL,
+    updated_at               TIMESTAMP   NOT NULL,
+    CONSTRAINT uk_subscriptions_user UNIQUE (user_id),
+    CONSTRAINT fk_subscriptions_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_sub
+    ON subscriptions (provider_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_cus
+    ON subscriptions (provider_customer_id);
+
+-- ------------------------------------------------------------
+-- usage_counters — per-user, per-day quota metering (UTC days)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS usage_counters (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL,
+    usage_day   DATE   NOT NULL,
+    query_count INT    NOT NULL DEFAULT 0,
+    CONSTRAINT uk_usage_user_day UNIQUE (user_id, usage_day)
+);
+
+-- ------------------------------------------------------------
+-- trend_snapshots — stored daily observations. This table is what makes
+-- repeat queries fast: upstreams are hit once per term per day.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS trend_snapshots (
+    id           BIGSERIAL PRIMARY KEY,
+    term_key     VARCHAR(160)     NOT NULL,
+    display_term VARCHAR(160)     NOT NULL,
+    geo          VARCHAR(16)      NOT NULL,
+    observed_on  DATE             NOT NULL,
+    raw_value    DOUBLE PRECISION NOT NULL,
+    source       VARCHAR(40)      NOT NULL,
+    fetched_at   TIMESTAMP        NOT NULL,
+    CONSTRAINT uk_trend_snapshot_term_geo_day UNIQUE (term_key, geo, observed_on)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trend_snapshot_lookup
+    ON trend_snapshots (term_key, geo, observed_on);
+
+-- ------------------------------------------------------------
+-- tracked_terms — user watchlists (also the refresh job's warm set)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tracked_terms (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           BIGINT       NOT NULL,
+    term_key          VARCHAR(160) NOT NULL,
+    display_term      VARCHAR(160) NOT NULL,
+    geo               VARCHAR(16)  NOT NULL,
+    last_index_value  DOUBLE PRECISION,
+    last_momentum_pct DOUBLE PRECISION,
+    last_checked_at   TIMESTAMP,
+    created_at        TIMESTAMP    NOT NULL,
+    CONSTRAINT uk_tracked_user_term_geo UNIQUE (user_id, term_key, geo),
+    CONSTRAINT fk_tracked_terms_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- trend_alerts — movements detected on watched terms (max one per day)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS trend_alerts (
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      BIGINT           NOT NULL,
+    term_key     VARCHAR(160)     NOT NULL,
+    display_term VARCHAR(160)     NOT NULL,
+    geo          VARCHAR(16)      NOT NULL,
+    type         VARCHAR(20)      NOT NULL,
+    z_score      DOUBLE PRECISION NOT NULL,
+    change_pct   DOUBLE PRECISION NOT NULL,
+    detected_on  DATE             NOT NULL,
+    message      VARCHAR(500)     NOT NULL,
+    read_flag    BOOLEAN          NOT NULL DEFAULT FALSE,
+    created_at   TIMESTAMP        NOT NULL,
+    CONSTRAINT uk_alert_user_term_day UNIQUE (user_id, term_key, geo, detected_on),
+    CONSTRAINT fk_trend_alerts_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_trend_alerts_user ON trend_alerts (user_id, detected_on);

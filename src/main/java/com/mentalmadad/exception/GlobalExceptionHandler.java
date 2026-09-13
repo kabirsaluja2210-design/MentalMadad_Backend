@@ -51,6 +51,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    /**
+     * Plan quota / entitlement violations -> 402 Payment Required.
+     * The body carries the tier that would satisfy the request so the client
+     * can route the user to the matching pricing card.
+     */
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleQuotaExceeded(
+            QuotaExceededException ex, HttpServletRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("status", HttpStatus.PAYMENT_REQUIRED.value());
+        body.put("error", "Payment Required");
+        body.put("message", ex.getMessage());
+        body.put("path", request.getRequestURI());
+        body.put("currentPlan", ex.getCurrentPlan().name());
+        body.put("requiredPlan", ex.getRequiredPlan().name());
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(body);
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex, HttpServletRequest request) {

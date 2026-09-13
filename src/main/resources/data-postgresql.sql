@@ -37,3 +37,12 @@ SELECT id, 'Psychiatry', 'LIC-PSY-2001', 12, 2500.00,
        TRUE, TRUE, FALSE, 4.9, 87, NOW(), NOW()
 FROM users WHERE email = 'psychiatrist@test.com'
 ON CONFLICT (license_number) DO NOTHING;
+
+-- ------------------------------------------------------------------
+-- TrendPulse: every existing account starts on the FREE tier. Paid tiers
+-- are granted only by a verified payment-provider event, never by seed data.
+-- Idempotent: ON CONFLICT keeps repeat boots from failing.
+-- ------------------------------------------------------------------
+INSERT INTO subscriptions (user_id, plan, status, cancel_at_period_end, created_at, updated_at)
+SELECT id, 'FREE', 'ACTIVE', FALSE, NOW(), NOW() FROM users
+ON CONFLICT (user_id) DO NOTHING;

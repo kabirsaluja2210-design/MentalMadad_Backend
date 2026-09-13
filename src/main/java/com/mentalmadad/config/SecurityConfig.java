@@ -102,6 +102,17 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // TrendPulse: the trending board, completions and reference data are
+                // public (the product's shop window); everything that consumes quota
+                // requires a JWT. Public matchers MUST precede the catch-all below.
+                .requestMatchers("/api/trends/trending", "/api/trends/suggest",
+                        "/api/trends/regions", "/api/trends/categories").permitAll()
+                .requestMatchers("/api/trends/**").authenticated()
+                // Billing: the pricing table is public, and the provider webhook is
+                // called server-to-server so it cannot carry a session — it is
+                // authenticated by signature verification inside the gateway instead.
+                .requestMatchers("/api/billing/plans", "/api/billing/webhook").permitAll()
+                .requestMatchers("/api/billing/**").authenticated()
                 // AI assistant endpoints require authentication (JWT) like other protected routes
                 .requestMatchers("/api/ai/**").authenticated()
                 // Everything else requires authentication

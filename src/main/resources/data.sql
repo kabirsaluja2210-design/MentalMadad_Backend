@@ -30,3 +30,26 @@ SELECT id, 'Psychiatry', 'LIC-PSY-2001', 12, 2500.00,
        'Dr. Robert Johnson is a board-certified psychiatrist with 12 years of experience in adult psychiatry, mood disorders, and medication management. He combines medication management with psychotherapy for comprehensive care.',
        TRUE, TRUE, FALSE, 4.9, 87, NOW(), NOW()
 FROM users WHERE email = 'psychiatrist@test.com';
+
+-- ------------------------------------------------------------------
+-- TrendPulse demo subscriptions (dev/H2 only)
+-- patient@test.com starts on Pro so the paid features (forecast, export,
+-- alerts, deep history) are visible immediately when demoing the product.
+-- ------------------------------------------------------------------
+INSERT INTO subscriptions (user_id, plan, status, current_period_end, cancel_at_period_end,
+                           provider_customer_id, provider_subscription_id, created_at, updated_at)
+SELECT id, 'PRO', 'ACTIVE', DATEADD('MONTH', 1, NOW()), FALSE,
+       'mock_cus_demo_pro', 'mock_sub_demo_pro', NOW(), NOW()
+FROM users WHERE email = 'patient@test.com';
+
+INSERT INTO subscriptions (user_id, plan, status, current_period_end, cancel_at_period_end,
+                           provider_customer_id, provider_subscription_id, created_at, updated_at)
+SELECT id, 'BUSINESS', 'ACTIVE', DATEADD('MONTH', 1, NOW()), FALSE,
+       'mock_cus_demo_biz', 'mock_sub_demo_biz', NOW(), NOW()
+FROM users WHERE email = 'admin@mentalmadad.com';
+
+-- Seed watchlist entries for the Pro demo account.
+INSERT INTO tracked_terms (user_id, term_key, display_term, geo, created_at)
+SELECT id, 'anxiety', 'Anxiety', 'GLOBAL', NOW() FROM users WHERE email = 'patient@test.com';
+INSERT INTO tracked_terms (user_id, term_key, display_term, geo, created_at)
+SELECT id, 'burnout', 'Burnout', 'IN', NOW() FROM users WHERE email = 'patient@test.com';

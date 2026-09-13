@@ -33,6 +33,42 @@ app:
   # interface and setting app.ai.provider=<name> — controllers/services don't change.
   ai:
     provider: local
+  # ------------------------------------------------------------------
+  # TrendPulse — daily trend analysis engine
+  # ------------------------------------------------------------------
+  trends:
+    # Ordered provider chain; the first available source that returns data wins.
+    # wikipedia-pageviews is a public, documented API publishing DAILY numbers;
+    # synthetic is a deterministic offline generator so the product still works
+    # with no network (local dev, CI, demos).
+    providers: ${APP_TRENDS_PROVIDERS:wikipedia-pageviews,synthetic}
+    cache-ttl-seconds: ${APP_TRENDS_CACHE_TTL:900}
+    cache-max-entries: 2000
+    http-timeout-ms: 4000
+    # Wikimedia requires a contact string in the User-Agent — set a real one per deployment.
+    user-agent: ${APP_TRENDS_USER_AGENT:TrendPulse/1.0 (https://mentalmadad.com; contact@mentalmadad.com)}
+    # Nightly warm + alerting. Disable on all but one replica when scaling out.
+    refresh-enabled: ${APP_TRENDS_REFRESH_ENABLED:true}
+    refresh-cron: ${APP_TRENDS_REFRESH_CRON:0 15 3 * * *}
+    refresh-window-days: 120
+  # ------------------------------------------------------------------
+  # Billing — subscriptions for TrendPulse
+  #
+  # provider=mock (default): no keys, no network; checkout is simulated locally
+  #   so the whole upgrade flow can be exercised in development.
+  # provider=stripe: real payments. Set the four STRIPE_* variables; the secret
+  #   key and webhook secret must come from the environment, never the repo.
+  # ------------------------------------------------------------------
+  billing:
+    provider: ${APP_BILLING_PROVIDER:mock}
+    currency: ${APP_BILLING_CURRENCY:usd}
+    success-url: ${APP_BILLING_SUCCESS_URL:http://localhost:3000/billing/success}
+    cancel-url: ${APP_BILLING_CANCEL_URL:http://localhost:3000/pricing}
+    stripe:
+      secret-key: ${STRIPE_SECRET_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+      price-pro: ${STRIPE_PRICE_PRO:}
+      price-business: ${STRIPE_PRICE_BUSINESS:}
 
 # Swagger / OpenAPI
 springdoc:
